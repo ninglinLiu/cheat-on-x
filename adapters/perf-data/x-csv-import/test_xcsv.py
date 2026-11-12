@@ -231,6 +231,8 @@ class TestCLI(FixtureMixin, unittest.TestCase):
         self.assertNotIn("bob", md)
         self.assertIn("这个清单值得收藏", md)
         self.assertNotIn(str(self.dir), md)                               # no absolute paths
+        self.assertIn("thread，共 2 条", md)                                # self-reply shown as part of the thread
+        self.assertIn("2/ 第一个……", md)
 
     def test_text_has_no_metrics(self):
         csvp = write_csv(self.dir / "x.csv", USERSCRIPT_HEADER, self.userscript_rows("2026-11-12T13:30:00Z", 2130))

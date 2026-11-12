@@ -49,7 +49,7 @@ def fmt_ratio(v: float | None, pct: bool) -> str:
 
 
 def fmt_time(dt: datetime | None) -> str:
-    return dt.isoformat(timespec="minutes") if dt else "—"
+    return dt.astimezone().isoformat(timespec="minutes") if dt else "—"   # local time, same zone everywhere
 
 
 def quote_block(text: str | None) -> str:
@@ -61,7 +61,7 @@ def quote_block(text: str | None) -> str:
 def render_report(rec: Record, *, source_label: str, published_at: datetime | None = None,
                   replies: list[Record] | None = None, quotes: list[Record] | None = None,
                   final_text: str | None = None, top_n: int = 20, form: str | None = None,
-                  window_hours: int | None = None) -> str:
+                  window_hours: int | None = None, thread_parts: list[Record] | None = None) -> str:
     published = published_at or rec.get("created_at")
     age = hours_between(published, rec.get("captured_at"))
     replies = replies or []
@@ -102,9 +102,14 @@ def render_report(rec: Record, *, source_label: str, published_at: datetime | No
             continue
         lines.append(f"| {label} | {fmt_ratio(d.get(key), pct)} | {desc} |")
     lines.append("")
-    lines.append("## 发出的正文")
-    lines.append("")
-    lines.append(quote_block(rec.get("text")))
+    if thread_parts:
+        lines.append(f"## 发出的正文（thread，共 {len(thread_parts) + 1} 条；指标只统计首条）")
+        lines.append("")
+        lines.append(quote_block("\n\n".join([rec.get("text") or ""] + [p.get("text") or "" for p in thread_parts])))
+    else:
+        lines.append("## 发出的正文")
+        lines.append("")
+        lines.append(quote_block(rec.get("text")))
     lines.append("")
     lines.append(f"## 回复（按赞排序，前 {top_n} 条；回复者 handle 已省略）")
     lines.append("")

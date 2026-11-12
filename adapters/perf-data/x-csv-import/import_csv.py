@@ -103,6 +103,16 @@ def metrics_summary(rec: dict) -> dict:
     return out
 
 
+def thread_parts_of(rec: dict, merged: dict) -> list:
+    """The author's own follow-up posts in the same conversation (a thread), oldest first."""
+    author = rec.get("author")
+    parts = [r for r in merged.values()
+             if r["post_id"] != rec["post_id"] and author and r.get("author") == author
+             and r.get("conversation_id") == rec["post_id"] and r.get("in_reply_to_user") == author]
+    parts.sort(key=lambda r: (r.get("created_at") or r["captured_at"], r["post_id"]))
+    return parts
+
+
 def write_report(rec, merged, out_dir: Path, *, source_label, published_at=None, final_path=None,
                  handle=None, form=None, window_hours=None, top=20) -> dict:
     author = rec.get("author") or norm_handle(handle)
@@ -114,7 +124,7 @@ def write_report(rec, merged, out_dir: Path, *, source_label, published_at=None,
     form = form or derive_form(rec, merged)
     md = render_report(rec, source_label=source_label, published_at=published_at, replies=replies,
                        quotes=quotes, final_text=final_text, top_n=top, form=form,
-                       window_hours=window_hours)
+                       window_hours=window_hours, thread_parts=thread_parts_of(rec, merged))
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.md").write_text(md, encoding="utf-8")
     age = hours_between(published_at or rec.get("created_at"), rec.get("captured_at"))
@@ -175,12 +185,8 @@ def cmd_text(args) -> int:
     if not rec:
         emit({"post_id": pid, "found": False})
         return 2
-    # thread: the author's own replies in the same conversation, oldest first
     author = rec.get("author")
-    parts = [r for r in merged.values()
-             if r["post_id"] != pid and author and r.get("author") == author
-             and (r.get("conversation_id") == pid) and r.get("in_reply_to_user") == author]
-    parts.sort(key=lambda r: (r.get("created_at") or r["captured_at"], r["post_id"]))
+    parts = thread_parts_of(rec, merged)
     thread_text = "\n\n".join([rec.get("text") or ""] + [p.get("text") or "" for p in parts]) if parts else None
     emit({"post_id": pid, "found": True, "author": author, "created_at": rec.get("created_at"),
           "text": rec.get("text"), "thread_parts": len(parts), "thread_text": thread_text})
