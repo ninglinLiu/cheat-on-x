@@ -1,48 +1,47 @@
 # 状态
 
-> 本文件由 `/cheat-status` 维护——每次跑 status 都会更新。手改无意义。
+> 本文件由 `/cheatx-status` 维护，每次跑 status 都会重写。手改无意义。
 
 ---
 
 **最近更新**: [INIT-DATE]
-**模式**: cold-start
-**内容形态**: opinion-video
+**账号**: [@handle] · [Premium 状态]
+**主要形态**: [x-post / x-longform / x-mixed]
 **当前 rubric**: v0
-**校准样本**: 0 / 5（解锁第一次 bump 的门槛）
+**校准样本**: 0（confidence 🔴 极低）
 
 ---
 
-## 进度条
+## ⏰ 到期待复盘
 
-```
-[░░░░░░░░░░░░░░░░░░░░] 0 / 30 → SQLite 升级建议门槛
-[░░░░░░░░░░░░░░░░░░░░] 0 / 5  → 脱离 cold-start 门槛
-```
+无。
 
-## 🎬 待办
+## 📤 今天
 
-无——你刚初始化，先写第一篇稿子吧。
+已发主帖 0 / 目标 [N] · 回复 0
 
-## 🔥 候选池
+## 📦 队列
 
-无（cold-start 期默认状态）。
-- 想试试热点抓取 → 说 `抓热点`
-- 想手动建池 → 编辑 `candidates.md`
+0 条（≈ 0 天）[颜色]
+
+## 🎯 候选池 top 3
+
+无——说 `抓 X 热点` 或 `找选题`。
 
 ## 📈 健康度
 
-- `rubric_notes.md`: [X 行]（健康，<600 警戒线）
-- `hooks_installed`: [✅ / ❌]
-- external audit configured: [✅ / ❌]
+- `rubric_notes.md`: [N 行]
+- `rubric-memo.md` 观察条目: [N]
+- hooks: [✅ / ❌]
+- 外部审核: [✅ / ❌]
+- 数据路线: [csv / x-api / manual]
 
-## 下一步建议
+## 下一步
 
-1. **写一份稿子**（任何观点视频脚本即可）
-2. 跑 `打分这篇 path/to/draft.md` 看 rubric 给的初始评分
-3. 准备发布前跑 `启动预测`
-4. 发布后说 `已发布 https://...`
-5. T+3 天跑 `复盘 path/to/draft.md`
+1. 写一条草稿（或说 `找选题`）
+2. `启动预测 drafts/<...>.md`（日常短帖可以 `快押`）
+3. 发之前 `定稿 drafts/<...>.md`
+4. 发完 `已发 https://x.com/.../status/...`
+5. 48 小时后：在 x.com 用油猴脚本导出 CSV → `复盘到期的 imports/<...>.csv`
 
-第 5 篇之后会解锁 `/cheat-bump`，rubric 才真正开始校准。
-
-完整工作流见 `WORKFLOW.md`。
+第 5 条复盘后可以提议第一次 `/cheatx-bump`。完整流程见 `WORKFLOW.md`。

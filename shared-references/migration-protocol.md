@@ -1,6 +1,6 @@
 # Migration Protocol（schema 演进哲学）
 
-被 `cheat-migrate` skill / `cheat-init` / SessionStart hook / 维护者引用。规定如何安全演进 `.cheat-state.json` schema 而不让老用户被打断。
+被 `cheatx-migrate` skill / `cheatx-init` / SessionStart hook / 维护者引用。规定如何安全演进 `.cheatx-state.json` schema 而不让老用户被打断。
 
 ---
 
@@ -28,8 +28,8 @@
 
 - **删除字段**——老 skill 仍写它，新 skill 不读它，会出歧义
 - **重命名字段**——老/新 skill 看不到对方写的
-- **改字段语义**（如 `mode` 从 enum 改为整数；`baseline_plays` 从 int 改为 list）
-- **改 enum 取值**（如 `"opinion-video"` 改成 `"opinion_video"`，老值不再合法）
+- **改字段语义**（如 `baseline_impressions` 从按形态的对象改成单个整数）
+- **改 enum 取值**（如 `"x-post"` 改成 `"x_post"`，老值不再合法）
 - **拆字段 / 合字段**
 
 > 模糊地带建议**保守判定为 MAJOR**——多写一份 migration 文件比让用户的 state 出错更好。
@@ -40,34 +40,34 @@
 
 每次准备 release 时如果改了 state schema：
 
-### 1. 改 cheat-init 写新 state 的硬编码 schema_version
+### 1. 改 cheatx-init 写新 state 的硬编码 schema_version
 
 ```diff
-- "schema_version": "1.1",
-+ "schema_version": "1.2",
+- "schema_version": "x1.0",
++ "schema_version": "x1.1",
 ```
 
-位置：`skills/cheat-init/SKILL.md` Phase 3 的 state 写入段。
+位置：`skills/cheatx-init/SKILL.md` Phase 3 的 state 写入段。
 
 ### 2. 改 migrations/registry.md 的 LATEST_SCHEMA 标记位
 
 ```diff
-- LATEST_SCHEMA = "1.1"
-+ LATEST_SCHEMA = "1.2"
+- LATEST_SCHEMA = "x1.0"
++ LATEST_SCHEMA = "x1.1"
 ```
 
-并在"版本链"表追加新行：
+同时改 `hooks/session_start.py` 里的 `LATEST_SCHEMA`。并在"版本链"表追加新行：
 
 ```
-| 1.1 | 1.2 | NO/YES | [1.1-to-1.2.md](1.1-to-1.2.md) | 一句话描述 |
+| x1.0 | x1.1 | NO/YES | [x1.0-to-x1.1.md](x1.0-to-x1.1.md) | 一句话描述 |
 ```
 
 ### 3. 写 migrations/<old>-to-<new>.md
 
-4 段必填（参考 `1.0-to-1.1.md` 模板）：
+4 段必填（格式参考上游 cheat-on-content 的 `migrations/1.0-to-1.1.md`）：
 - WHAT changed
 - WHY
-- HOW (Claude steps for /cheat-migrate)
+- HOW (Claude steps for /cheatx-migrate)
 - Manual fallback
 
 > 写不出 4 段 = 改动太复杂没想清楚 = 不该 release 这次 schema bump。
@@ -79,7 +79,7 @@
 
 ### BREAKING / MINOR
 
-- schema_version 1.1 → 1.2: <一句话描述>。迁移指南：[migrations/1.1-to-1.2.md](migrations/1.1-to-1.2.md)
+- schema_version x1.0 → x1.1: <一句话描述>。迁移指南：[migrations/x1.0-to-x1.1.md](migrations/x1.0-to-x1.1.md)
 - ...
 ```
 
@@ -93,12 +93,12 @@ MINOR 用 `### MINOR`，MAJOR 用 `### BREAKING`，要醒目。
 
 ```python
 # 好
-target_cadence = state.get("target_publish_cadence_days", None)
+posts_per_day = state.get("target_posts_per_day", None)
 benchmark_status = state.get("benchmark_status", "none")
-shoots = state.get("shoots", [])
+queue = state.get("queue", [])
 
 # 坏（老 state 没这字段会 KeyError）
-target_cadence = state["target_publish_cadence_days"]
+posts_per_day = state["target_posts_per_day"]
 ```
 
 理由：
@@ -112,14 +112,13 @@ target_cadence = state["target_publish_cadence_days"]
 
 ## SessionStart hook 的角色
 
-hook 在每次会话开始时检测：
+hook（`hooks/session_start.py`）在每次会话开始时检测：
 
-```bash
-state_schema=$(jq -r '.schema_version // "unknown"' "$STATE_FILE")
-if [[ "$state_schema" != "$LATEST_SCHEMA" ]]; then
-  echo "⚠️ schema 版本不一致：state=$state_schema, skill 期望=$LATEST_SCHEMA"
-  echo "   建议跑 /cheat-migrate 升级（不阻塞继续工作）"
-fi
+```python
+state_schema = state.get("schema_version", "unknown")
+if state_schema != LATEST_SCHEMA:
+    print(f"⚠️ schema 版本不一致：state={state_schema}, skill 期望={LATEST_SCHEMA}")
+    print("   建议跑 /cheatx-migrate 升级（不阻塞继续工作）")
 ```
 
 **非阻塞**：用户可以选择"先继续工作，回头再跑 migrate"。MINOR 不一致时大部分功能仍能跑；MAJOR 时部分 skill 可能报错——这时再跑 migrate 也来得及。
@@ -139,11 +138,11 @@ fi
 
 ## 备份保留策略
 
-`/cheat-migrate` 写之前会备份到 `.cheat-state.json.backup-<timestamp>`。
+`/cheatx-migrate` 写之前会备份到 `.cheatx-state.json.backup-<timestamp>`。
 
 备份保留多久：
-- 用户跑 `/cheat-status` 时，如果有备份 + state 已稳定运行 N 天 → 提示"可以清理 N 个旧备份"
-- `/cheat-init` 重 init 时清理所有旧备份（既然要重 init，老备份意义不大）
-- 用户手动 `rm .cheat-state.json.backup-*` 永远 OK
+- 用户跑 `/cheatx-status` 时，如果有备份 + state 已稳定运行 N 天 → 提示"可以清理 N 个旧备份"
+- `/cheatx-init` 重 init 时清理所有旧备份（既然要重 init，老备份意义不大）
+- 用户手动 `rm .cheatx-state.json.backup-*` 永远 OK
 
-不入版本控制：`.cheat-state.json.backup-*` 应在 `.gitignore` 里（已含 `.cheat-state.json` 通配规则）。
+不入版本控制：用户项目的 `.gitignore`（`templates/gitignore.template`）含 `.cheatx-state.json.backup-*` 一行。

@@ -1,102 +1,101 @@
-# Rubric Memo — Bump 升级档案
+# Rubric Memo — 观察与升级档案（rubric-memo.md）
 
-> ⚠️ **本文件是 Channel A 内部参考。Channel B（cheat-score-blind sub-agent）**永远不读**本文件**——blind sub-agent 的 hard refusal list 显式包含本文件路径。
+> ⚠️ **Channel B（`cheatx-score-blind` sub-agent）永远不读本文件**——它在 sub-agent 的硬禁读清单里（refusal_code `blocked_rubric_memo`）。
 >
-> 这里累积每次 rubric bump 的完整 Memo：触发观察、证据数据表（含真实样本名 + 实绩）、诊断、跨模型审核结论、已知局限。
+> 这里放所有**带真实数据**的东西：每次复盘的观察记录、跨样本观察、待验证假设、每次 bump 的完整 Memo、被拒的升级、基线重算记录。
 
----
-
-## 这文件是干嘛的
-
-cheat-bump Phase 5 落地时把升级 Memo 写**这里**，**不写**进 `rubric_notes.md`。
-
-历史上 cheat-bump 把 Memo 全文（含视频名 + 实绩 + 派生证据）写到 `rubric_notes.md`。但 `rubric_notes.md` 是 blind sub-agent 的白名单文件——sub-agent 通过它泄漏实绩数据，本应隔离的盲打分变成"看过实绩的事后解释"。
-
-修复方案：
-
-| 文件 | 内容 | blind 白名单 |
+| 文件 | 内容 | blind 可读 |
 |---|---|---|
-| `rubric_notes.md` | 公式 / 维度定义（**通用语言**，不含视频名 / 实绩）/ Bucket 段 / 顶部 metadata | ✅ YES |
-| `rubric-memo.md`（本文件） | 升级 Memo 全文（**含**真实视频名 + 真实播放数 + 派生证据） | ❌ NO（硬禁读） |
+| `rubric_notes.md` | 公式 / 维度定义 / bucket 规则 / 抽象规律 | ✅ |
+| `rubric-memo.md`（本文件） | 观察 + Memo，含帖子名、链接、数字、回复摘录 | ❌ |
+
+生命周期规则见 cheat-on-x 的 `shared-references/observation-lifecycle.md`。
 
 ---
 
-## 写入规则（cheat-bump Phase 5）
+## 观察记录
 
-- **追加模式**：新 bump 的 Memo **append 到文件末尾**，旧 Memo 不动。按时间倒序倒着读可看 rubric 演化全程
-- **每段 Memo 必含 6 个组件**（按 [bump-validation-protocol.md](../shared-references/bump-validation-protocol.md) Step 5 模板）：
-  1. 触发观察（哪些观察累积到 ≥3 同向偏差）
-  2. 证据数据（校准池重打表 + 排序对照——**含真实视频名 + 实绩**）
-  3. 诊断（rubric 哪条假设被推翻）
-  4. 新公式（变化的权重 / 维度）
-  5. 跨模型审核结论引用（channel C verdict + 理由摘录）
-  6. 已知局限（这次 bump 没解决什么）
+> `/cheatx-retro` 每次复盘追加一条（批量复盘可合并成一张表）。被吸收 / 被推翻的条目在 bump cleanup 时删除——git history 是档案。
+>
+> ```
+> ### YYYY-MM-DD [短名] (id) — [一句话定性]
+> - 形态 / 协变量：
+> - 预测：composite=X.XX，bucket=…，中枢 N
+> - 实际：曝光 N（实际/中枢 N.N×）· 互动率 · 收藏/赞比 · 回复（T+48h）
+> - 回复 / 引用要点：
+> - 判断：
+> - 详见：predictions/<file>.md
+> ```
 
-- **派生证据段**也写**这里**：「派生证据：「视频 X」CC=1 → 实绩 13.7w」这种 named anchor 在 `rubric_notes.md` 里**绝对不允许**，全部沉淀进本文件
-
----
-
-## 谁读本文件
-
-| Skill | 读？ | 干啥 |
-|---|---|---|
-| `cheat-bump` Phase 5 | ✅ 写 | append 新 Memo |
-| `cheat-retro` | ✅ 读 | 复盘时回看历史 Memo 找 rubric 演化轨迹 |
-| `cheat-status` | ✅ 读 | 看板上显示"上次 bump 用了什么证据" |
-| **`cheat-score-blind`** | ❌ **硬禁** | refusal_code: `blocked_rubric_memo` |
-| `cheat-score` / `cheat-predict` 主 Claude 自估那部分 | 不主动读 | 主对话本身已被污染，再读一遍 Memo 也只是冗余 |
+（暂无）
 
 ---
 
-## Memo 段格式（cheat-bump 用此格式写）
+## 重大跨样本观察
 
-每次 bump append 一段，格式：
+> 同一 pattern ≥3 条样本支持才升格到这里。
+
+（暂无）
+
+---
+
+## 待验证假设
+
+- [ ] [示例] 晚间 21-23 点发的主帖曝光高于白天（协变量：发帖时段）
+- [ ] [示例] thread 相对 single 的倍数（形态基线差异）
+- [ ] [示例] TM（时效）维度是否有独立预测力
+
+---
+
+## 基线 / bucket 重算记录
+
+> `/cheatx-retro` 每次重算某形态基线、或 `/cheatx-bump --bucket-only` 时追加一行。
+
+| 日期 | 形态 | 旧基线 | 新基线 | 样本数 |
+|---|---|---|---|---|
+
+---
+
+## 升级 Memo
+
+> `/cheatx-bump` Step 5 在这里 append，旧 Memo 不动。每段 6 个组件：
 
 ```markdown
 ---
 
-## v<N> → v<N+1> Memo （bumped at <ISO 8601>）
+## v<N> → v<N+1> Memo（bumped at <ISO 8601>）
 
 ### 触发观察
-（列累积到本次 bump 的 ≥3 同向偏差观察 ID + 一句话总结。引用 rubric_notes.md 的观察 ID）
+（观察 ID + 一句话）
 
 ### 证据数据
-**校准池重打表**：
+`tools/rank_check.py` 完整输出 + 校准池重算表：
 
-| 样本 | composite (vN) | composite (vN+1) | rank (vN+1) | 实绩 | rank (actual) | delta |
-|---|---|---|---|---|---|---|
-| 「真实视频名 1」 | 9.41 | 9.55 | 1 | 124.8w | 1 | 0 |
-| 「真实视频名 2」 | 8.24 | 9.11 | 2 | 71.1w | 2 | 0 |
-| ... | ... | ... | ... | ... | ... | ... |
-
-**派生证据**（如有）：
-- 「视频名 X」CC=1 → 实绩 Y w 验证「高抽象密度 → 低 reach」假设
-- ...
+| 样本 | 形态 | composite (vN) | composite (vN+1) | 实际/基线 | 备注 |
+|---|---|---|---|---|---|
 
 ### 诊断
-（rubric vN 的哪条假设被数据推翻；为什么 vN+1 的公式能解释偏差）
+（vN 的哪条假设被推翻；vN+1 为什么能解释）
 
 ### 新公式
-旧：`(ER×1.5 + SR×1.5 + HP×1.5 + QL + NA + AB + SAT) / 8.5 × 2.0`
-新：`(ER×2.0 + HP×1.5 + MS×1.5 + QL + SR + TS + SAT) / 9.0 × 2.0`
-
-变化：删 NA / AB；加 MS / TS；ER 权重 1.5 → 2.0
+旧：`…`
+新：`…`
+变化：…
 
 ### 跨模型审核（channel C）
-- 审核模型：qwen-max-2025-XX
-- 判定：PASS
-- 理由摘录：「...」
-- 关键风险：「...」
+- 审核模型：
+- 判定：PASS / REJECT
+- 理由摘录：
 
 ### 已知局限
-（这次 bump 没解决的事；下次 bump 时仍待观察的方向）
-
 ```
+
+（首次 bump 后在此追加第一段）
 
 ---
 
-## 例：v0 → v1（首次 bump）
+## 被拒升级 log
 
-（cheat-init 创建时本文件为空，首次 bump 时在此追加第一段 Memo）
+> 提议过但没通过的 bump——避免半年后重复提同一个失败方案。
 
-<!-- 后续 bump 在此 append -->
+（暂无）

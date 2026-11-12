@@ -1,155 +1,142 @@
 # Rubric Bump Validation Protocol（升级验证协议）
 
-被这些子 skill 引用：`cheat-bump`、主 SKILL.md。
+被这些子 skill 引用：`cheatx-bump`、主 SKILL.md。
 
-这是项目原则 #2 的完整规范——**升级 = 全量重打**。任何对 rubric 的结构性变更都必须走完本协议。
+项目原则 #2 的完整规范——**升级 = 全量重打**。任何对 rubric 的结构性变更都必须走完本协议。
+
+X 版和上游的区别：X 的单条结果噪声大（一次大号转发就是 30×），样本又攒得快。所以一致性检验从"几条样本排对了几条"换成**秩相关 + 自助重采样稳定性**，并由 `tools/rank_check.py` 确定性计算，不靠模型心算。
 
 ---
 
 ## "升级"的定义
 
-下列任一变更触发完整 bump 流程：
+触发完整 bump 流程：
+- 公式系数变化（SV×1.0 → ×1.5）
+- 维度增减（加 TM，删 DW）
+- 维度定义颠覆性改写
+- NR 扣分系数变化
+- 归一化常数变化
 
-- 公式系数变化（ER×1.5 → ×2.0）
-- 维度增减（删 NA，加 MS）
-- 维度定义颠覆性改写（"QL=金句数量" → "QL=可挪用句式")
-- 归一化常数变化（除数从 8.5 → 9.0）
+**不**触发 bump，但要在 `rubric_notes.md` 标注：
+- 维度定义边际细化（某档锚点描述更具体）
+- 打分习惯备注（不改公式）
 
-下列变更**不**触发 bump，但要在 `rubric_notes.md` 标注：
-- 维度定义边际细化（QL=5 的门槛从"≥3 句"细化为"≥3 句且分布在不同段")
-- 单维度门槛变严的备注（不改公式，只改打分时的判断习惯）
-- 锚点样本更新（用新样本作为 5 分标杆）
-
----
-
-## 何时**可以**提议升级（**Claude 判断为主，下面是参考触发场景**）
-
-任一成立即可提议——但**最终是 Claude 判断观察的成熟度 + 信号强度**，下面只是 default heuristic：
-
-1. 某个跨样本观察出现**清晰、可追溯到具体数据点的支持模式**（默认参考 ≥3 样本，但 Claude 可以基于 1-2 个**特别强**的样本提议——如 6x 流量比 / 单一模因 ≥2000 赞这种异常信号）
-2. 当前 rubric 在最近复盘中**系统性偏向同一方向**（默认参考 ≥3 次同向，但 Claude 可以基于 1-2 次**极端偏离**提议——如中枢 50w 实绩 5w 这种 10x 偏差）
-3. 某候选维度展示了独立预测力（参考样本数：≥3 是稳，但 1-2 个强证据也算）
-4. 校准池跨过某分水岭（5 / 10 / 20 / 50）触发常规复审
-
-**Claude 提议 bump 时必须显式标注**：本次提议是 default-aligned（满足上面常规门槛）还是 judgment-driven（基于强信号但样本少）。让用户审视依据。
+`--bucket-only`（只重算各形态基线和 bucket 边界）不是 bump，但同样记录在 `rubric-memo.md`。
 
 ---
 
-## 何时**禁止**提议升级
+## 何时可以提议（Claude 判断为主，以下是参考）
 
-下面是**硬约束**——Claude 不能突破：
+1. 某跨样本观察有清晰、可追溯到数据点的支持（参考 ≥5 条；1-2 条极强信号也可，如同 composite 相差 10× 且无外生冲击）
+2. 最近复盘系统性同向偏差（参考连续 ≥4 次同向；X 噪声大，比上游的 3 次多一次）
+3. 某候选维度（如 TM）展示独立预测力
+4. 校准池跨过分水岭（10 / 25 / 50 / 100）触发常规复审
 
-- 当前正处于 in-progress prediction（state file `in_progress_session != null`）—— 流程纪律
-- 上次 bump 后没有任何新校准样本——必须至少 1 个新样本才能再次 bump（避免循环验证自己）
+提议时**显式标注** default-aligned 还是 judgment-driven。
 
-下面是**软建议**——Claude 通常应避免，但有强理由可以打破并显式标注：
+## 何时禁止提议
 
-- 校准池 < 5 样本时一般不 bump（除非出现强反例）
-- 上次 bump 距今 < 3 篇新校准样本时一般不 bump（除非新样本含强反例）
+硬约束：
+- `in_progress_session.type == "bump"`（上一次 bump 没走完）
+- 上次 bump 后没有任何新校准样本
 
-**Claude 软违反时必须：**
-1. 在提议中显式说明"我知道默认建议等到 N≥5 / 等到 ≥3 篇新样本，但本次原因是 [X 强信号]"
-2. 仍走完整 5 步验证流程（包括跨模型审核）
-3. 跨模型审核如果 REJECT → bump 被拒，**不允许"我觉得信号强"绕过**
+软建议（可打破，但要显式说明理由，仍走完 5 步）：
+- 校准池 < 10 条
+- 距上次 bump < 5 条新样本
 
 ---
 
-## 完整升级流程（强制 5 步，不允许跳步）
+## 完整升级流程（5 步，不许跳）
 
 ### Step 1：写出新公式的完整方程
 
-不能只说"ER 权重提高"，必须把整个方程完整写出，所有系数和归一化常数。
-
-示例（合规）：
 ```
-v2.0  composite = (ER×1.5 + SR×1.5 + HP×1.5 + QL + NA + AB + SAT) / 8.5 × 2.0
-v2.1  composite = (ER×2.0 + HP×1.5 + MS×1.5 + QL + SR + TS + SAT) / 9.0 × 2.0
+v0  composite = (HK + RP + SV + RS + DW + FT + NF) / 7 × 2.0 − NR × 0.4
+v1  composite = (HK×1.5 + RP + SV×1.5 + RS + DW + FT + NF) / 8 × 2.0 − NR × 0.6
 ```
 
-示例（违规）：
-- "把 ER 权重提到 2.0" ← 没说其他权重是否变
-- "加 MS 维度" ← 没说权重和归一化常数
+"把 SV 权重提一点"这种不完整描述不算。
 
-### Step 2：在校准池上**本地**全量重打分
+### Step 2：在校准池上重算
 
-校准池定义：`predictions/*.md` 中所有有完整复盘段（含 `actual_*` 数据）的文件。
+**校准池** = `predictions/*.md` 中有完整复盘段的文件，**排除**：
+- 复盘段标了 `exogenous_boost`（外生冲击主导）
+- 标了 `Integrity warning`（发出文本与预测文本差 ≥30%，或预测段被外部修改）
+- reconstructed / `_redo`
+- `early_retro: true` 的样本降权 0.5（不排除）
 
-每篇用新公式重新算 composite。**不重新打各维度分数**——维度分数不变（v2 的 ER=5 在 v2.1 也是 ER=5），只重算综合分。
+**结果变量**用 `实际曝光 / 预测时 Baseline`（倍数），不用绝对曝光——账号在长大，绝对数不可比。
 
-例外：如果新公式增加了维度（如新增 MS），那对每个老样本必须**回追打 MS 分**。这一步会让升级成本随样本数线性上升，是设计上的"升级阻尼"。
+- **只改系数**：维度分不变，直接用新公式重算所有样本的 composite（零成本，必须全量）
+- **新增维度**：老样本需要回补新维度分。通过 `cheatx-score-blind` sub-agent 对 `drafts/<id>.md` 打新维度（盲打，不看结果）。
+  - 池 ≤ 40 条 → 全量回补
+  - 池 > 40 条 → 按"形态 × 结果三分位"分层抽 40 条回补，只在这 40 条上做 Step 3；表里标明抽样
 
-### Step 3：计算排序一致性
+### Step 3：排序一致性（确定性计算）
 
-新 composite 排序 vs 各样本实绩 bucket 排序，必须满足：
-- 在 ≥`THRESHOLD` 比例样本上一致（默认 4/5 = 80%）
-- 不能把旧公式做对的任一对样本顺序搞反（pairwise no-regression）
+把样本导出成 `.cheatx-cache/bump-pool.csv`（列：`file, form, composite_old, composite_new, outcome_ratio, weight`），跑：
 
-排序一致性的算法：
-1. 用新 composite 给所有校准样本排序
-2. 用 actual_plays 给所有样本排序
-3. 计算 Spearman rank correlation；同时检查每对 (i, j) 的相对顺序是否颠倒
-4. 输出对照表：每个样本的 [新 rank, actual rank, delta]
+```bash
+python tools/rank_check.py .cheatx-cache/bump-pool.csv
+```
 
-### Step 4：跨模型独立审核（**强制**，除非 escape hatch）
+输出并判定：
 
-`CROSS_MODEL_AUDIT=true`（默认）时：
-1. 调用 `mcp__llm-chat__chat`，把以下打包发给外部 LLM：
-   - 旧公式 + 新公式
-   - 校准池所有样本的：维度分数、composite（新+旧）、actual_plays、actual_likes、actual_comments、actual_shares
-   - Step 3 的排序对照表
-2. 外部 LLM 独立判定两件事：
-   - 排序一致性是否真的 ≥ THRESHOLD？
-   - 新公式相比旧公式是否解释力更强？
-3. 外部 LLM 必须输出 **PASS** / **REJECT** + ≥ 100 字理由
-4. 本地判定与外部判定**两个都通过**才能进入 Step 5
+| 指标 | 通过条件 |
+|---|---|
+| Spearman ρ（新 composite vs outcome_ratio） | ρ_new ≥ ρ_old + 0.05 |
+| 新公式 ρ 本身 | ρ_new ≥ 0.25（否则新公式也只是噪声） |
+| 自助重采样稳定性 | 1000 次重采样中 ρ_new > ρ_old 的比例 ≥ `THRESHOLD`（默认 **0.80**） |
+| 按形态分组 | 任何样本数 ≥ 5 的形态里，ρ_new 不得比 ρ_old 低 0.10 以上（防止"整体变好、某形态崩掉"） |
 
-`CROSS_MODEL_AUDIT=false`：跳过外部审核——**仅在离线/无网时使用**。state file 标记 `last_bump_self_audited: true`，`cheat-status` 持续提示用户配置外部审核。
+`THRESHOLD = 0.80` 对应上游的"4/5 一致"——同样是刚性门槛。
 
-### Step 5：升级后清算（Cleanup pass）
+### Step 4：跨模型独立审核（强制，除非 escape hatch）
 
-bump 落地必须一次性完成：
+`CROSS_MODEL_AUDIT=true`（默认）：
+1. 调 `mcp__llm-chat__chat`，发给外部模型：旧 / 新公式、Step 3 的完整输出（含每个样本的维度分、composite 新旧、outcome_ratio、形态、协变量）
+2. 外部模型独立判定：一致性是否真的达标？新公式解释力是否更强？是否只是在拟合少数极端样本？
+3. 输出 **PASS** / **REJECT** + ≥100 字理由
+4. 本地 Step 3 与外部审核**都通过**才进 Step 5
 
-1. 在 `rubric_notes.md` 顶部更新 `**当前版本**` 和**版本速查表**新增一行
-2. 在 `rubric-memo.md` 追加"vN → vN+1 升级 Memo" 段写完整 memo（含触发观察 + 证据数据 + 诊断 + 新公式 + 已知局限）。⚠️ 不写入 `rubric_notes.md`——它是 blind sub-agent 白名单，含实绩数据会污染盲评通道
-3. 删除驱动本次升级、且已被吸收为正式维度的所有"观察记录"段条目
-4. 删除升级过程中被推翻的"观察记录"段条目
-5. 仍未解决的"观察记录"段条目 → 移到新版本的"待验证假设"段（保留）
-6. 更新所有校准样本的 prediction 文件**底部**追加一行：`**Re-scored under <new-version> on YYYY-MM-DD**: composite=X.XX → Y.YY`（不动预测段、不动复盘段，只追加这一行）
+`CROSS_MODEL_AUDIT=false`：仅离线时用；state 标 `last_bump_self_audited: true`，cheatx-status 持续提示。
 
-清算不是可选的。rubric_notes.md 是工作台，不是博物馆——见 `observation-lifecycle.md`。
+### Step 5：升级后清算
+
+一次性完成：
+1. `rubric_notes.md` 顶部更新**当前版本** + 版本速查表新增一行（只写公式与通用规则——**不写样本名、数字、链接**）
+2. `rubric-memo.md` 追加"vN → vN+1 升级 Memo"（触发观察 + 证据数据 + Step 3 输出 + 外部审核理由 + 已知局限）
+3. 删除已被吸收为正式维度 / 权重的观察记录
+4. 删除被推翻的观察记录
+5. 未解决的观察 → 移到"待验证假设"
+6. 每个校准样本的预测文件**末尾**追加一行：`**Re-scored under vN+1 on YYYY-MM-DD**: composite=X.XX → Y.YY`（不碰预测段、不碰复盘段正文）
+7. state：`rubric_version` +1、`last_bump_at`、`calibration_samples_at_last_bump`、清空 `consecutive_directional_errors`
 
 ---
 
-## bump 被拒后的处理
-
-任一步失败 → bump 拒绝，按下列规范处理：
+## bump 被拒后
 
 | 失败位置 | 处理 |
 |---|---|
-| Step 3 本地排序不一致 | 候选公式回到"待验证"区。**不允许**默默放宽 THRESHOLD（如从 4/5 改到 3/5）—— 那是诚实的 self-deception。THRESHOLD 是协议刚性，与"何时可以提议 bump"的样本数门槛不同（后者可以软违反） |
-| Step 4 外部审核 REJECT | 把外部 LLM 的理由完整记录到 `rubric-memo.md` 的"被拒升级 log"段 |
-| Step 4 外部审核与本地判定冲突（一个 PASS 一个 REJECT） | 视为 REJECT。冲突意味着至少一方对数据的解读不稳定，不应升级 |
-| Step 5 清算无法完成（如某观察既不能删也不能保留） | bump 回滚到 step 0。Note：这意味着新公式还有未捕获的"未解决观察"，方案不成熟 |
+| Step 3 不达标 | 候选公式回到"待验证"。**不允许**调低 THRESHOLD 或改用对自己有利的指标 |
+| Step 4 REJECT | 外部理由完整记进 `rubric-memo.md` 的"被拒升级 log" |
+| 本地与外部冲突 | 视为 REJECT |
+| Step 5 清算做不完 | 回滚——方案不成熟 |
 
 ---
 
-## 升级阻尼（Why this protocol is intentionally hard）
+## 升级阻尼
 
-校准池每多一个样本，bump 成本线性上升：
-- 校准池 3-5 个 → 几乎零成本
-- 校准池 20-30 个 → 可感成本
-- 校准池 50+ → 痛苦
+样本越多，bump 越难——这是故意的。频繁 bump = 在追噪声。健康的 rubric：bump 越来越少、每次解释的观察越来越多。
 
-这是**故意的设计**。频繁 bump = rubric 在追噪声。一个稳定 rubric 的特征是：**bump 越来越罕见，bump 越来越大**——单次 bump 解释多个累积观察，而不是一观察一升级。
-
-参考视频分析项目：v1 → v2 用了大约 4 周（从首次发布到第一次 bump），v2 → v2.1 候选已 4 周仍未升正（在等 6 样本联合验证）。这是健康节奏。
+X 上尤其要警惕：一周 20 条样本，很容易看到"连续 4 条都低估"——先查是不是发帖条件变了（时段、间隔、Premium 到期、被限流），再怀疑 rubric。协变量就是为这一步准备的。
 
 ---
 
-## 反模式（必须拒绝的请求）
+## 反模式（必须拒绝）
 
-- 「跳过校准池重打，直接换公式」 → 拒绝。Step 2 不可跳
-- 「外部 LLM 审核太麻烦，跳过」 → 仅当 `CROSS_MODEL_AUDIT=false` 显式设置时允许
-- 「这次只调一个权重，不算升级吧」 → 任何系数变化都算。Step 1 必须写完整方程
-- 「反正是我自己用，不用走全套流程」 → 拒绝。这套流程的价值在你**未来回看**时——你将来想问"为什么 v2.3 没采纳"，必须有完整 memo
-- 「能不能把 THRESHOLD 从 4/5 改到 3/5 让这次过了」 → 拒绝。改 THRESHOLD 本身是元层级 bump，需要单独走流程
+- 「跳过重算，直接换公式」 → Step 2 不可跳
+- 「跳过外部审核」 → 仅 `CROSS_MODEL_AUDIT=false` 显式设置时允许
+- 「只调一个权重，不算升级」 → 任何系数变化都算
+- 「把那几条被大号转发的爆款也算进来，新公式才过」 → 拒绝。外生样本排除是规则，不是可选项
+- 「THRESHOLD 改成 0.7」 → 改门槛本身是元层级 bump，单独走流程

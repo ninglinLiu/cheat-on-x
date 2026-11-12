@@ -1,137 +1,133 @@
 # Blind Prediction Protocol（盲预测协议）
 
-被这些子 skill 引用：`cheat-predict`、`cheat-retro`、主 SKILL.md。
+被这些子 skill 引用：`cheatx-predict`、`cheatx-retro`、`cheatx-publish`、主 SKILL.md。
 
-这是项目原则 #1 的完整规范。任何子 skill 在写预测前都必须执行本协议。
+项目原则 #1 的完整规范。任何子 skill 写预测前都必须执行本协议。
 
 ---
 
 ## 核心定义
 
-**盲预测**：在预测者（人或模型）看到任何关于该作品发布后真实表现数据**之前**完成的预测。
+**盲预测**：在预测者（人或模型）看到这条帖子发布后任何真实表现数据**之前**完成的预测。
 
-预测一旦写入 `predictions/*.md` 的 `## 预测` 段，该段即为 **immutable**——只能在文件末尾追加 `## 复盘` 段，不能修改预测段任何字符。
+预测写入 `predictions/*.md` 的 `## 预测` 段后即 **immutable**——只能在文件末尾追加 `## 复盘` 段。
 
----
+### X 的特殊风险
 
-## "见过数据"的边界（关键，常被违反）
+X 帖子发出去几秒就开始显示浏览数，回复几分钟内就来。视频平台"发了再补预测、只要没看后台"在 X 上几乎不成立——**你一定会看到**。
 
-下列任一条件成立 → 已不再 blind，**禁止写预测**：
-
-| 信息 | 是否破坏 blind | 例外 |
-|---|---|---|
-| 该作品任何平台的播放数 / 阅读数 | ✗ 破坏 | 无 |
-| 该作品的点赞 / 评论 / 转发数 | ✗ 破坏 | 无 |
-| 该作品的具体评论内容 | ✗ 破坏 | 无 |
-| 该作品的算法推荐位 / 热门榜位置 | ✗ 破坏 | 无 |
-| 该作品发布后的截图 / 后台数据 | ✗ 破坏 | 无 |
-| **同期发布的其他人**作品的表现 | ○ 不破坏 | — |
-| **历史上类似主题**作品的表现 | ○ 不破坏（这正是锚点对比要做的） | — |
-| 该作品**发布前**的稿子内容 | ○ 不破坏 | 这是预测的输入 |
-| 用户口述的"我感觉这条还行" | △ 谨慎 | 用户的主观感觉不算"数据"，但要在预测里标注用户偏见 |
-
-**判断捷径**：只要这条信息**只能在作品发布后才能获得**，就算"数据"。
+所以 X 版规则比上游更硬：**预测必须在点"发布"之前落盘。** 已经发出去的帖子，默认只能记 reconstructed。
 
 ---
 
-## 预测者必须主动声明的情况
+## "见过数据"的边界
 
-子 skill 在启动 `cheat-predict` 前，必须自检并向用户**主动声明**：
+| 信息 | 破坏盲度？ |
+|---|---|
+| 这条帖子的浏览数 / 赞 / 转 / 引用 / 回复 / 收藏 | ✗ 破坏 |
+| 这条帖子下的回复内容、引用内容 | ✗ 破坏 |
+| 这条帖子被谁转发了 | ✗ 破坏 |
+| 发出后自己刷到它在时间线里的样子（带计数） | ✗ 破坏 |
+| 这条帖子的分析页 / 导出 CSV 里它的那一行 | ✗ 破坏 |
+| 同时段**别人**帖子的表现 | ○ 不破坏 |
+| 你自己**过去**帖子的表现（锚点对比要用） | ○ 不破坏 |
+| 发布前的草稿 / 定稿 | ○ 不破坏（这是输入） |
+| 发布前给朋友看、朋友说"这条会火" | △ 不算数据，但在预测里标注 |
 
-1. **作品已发布超过 RETRO_WINDOW_DAYS 天**（默认 3 天）→ 必须拒绝写"预测"，改记为 `**Reconstructed retrospective**`，明确标注非预测
-2. **作品已发布但 < RETRO_WINDOW_DAYS 天，用户尚未透露任何数据**→ 允许 blind 预测，但在文件头部标记 `published_before_prediction: true` + `blind_status: confirmed_no_data_seen`
-3. **用户在对话里已粘贴了任何后续数据**→ 同 #1 处理，记为 reconstructed
+**判断捷径**：这条信息是不是只有发布之后才拿得到？是 → 算数据。
 
-`BLIND_CHECK=strict`（默认）：上述任何破坏条件命中，**拒绝执行**。
-`BLIND_CHECK=lenient`：仅警告 + 强制标注，允许继续——只用于离线测试或学术演练，**不推荐用于真实校准**。
+---
+
+## 预测前必须自检
+
+`cheatx-predict` 启动时（批量模式对每条都查）：
+
+1. **帖子已发布？**
+   - 未发 → 通过
+   - 已发 → 默认按 reconstructed 处理（见下）。唯一例外：发出 ≤ 10 分钟、用户明确确认"没看任何计数、没看回复" → 允许写，header 标 `published_before_prediction: true` + `blind_status: confirmed_no_data_seen`，复盘时该样本降权 0.5
+2. **对话里出现过这条帖子的任何数字或回复？** 有 → reconstructed
+3. **CSV / API 导入时机**：同一会话里如果刚导入过包含这条帖子的 CSV（比如批量复盘时导入的文件恰好也包含今天刚发的帖子）→ 这条已经不盲
+
+`BLIND_CHECK=strict`（默认）：命中即拒绝写预测，改走 reconstructed。
+`BLIND_CHECK=lenient`：只警告 + 强制在 header 标 `**Reconstructed retrospective — NOT a blind prediction**`。仅用于演练。
+
+### Reconstructed retrospective
+
+已见数据的帖子仍然可以分析，但：
+- 文件名 `<short>_redo.md`
+- header 第一行 `**Reconstructed retrospective — NOT a blind prediction**`
+- **不计入** `calibration_samples`，不进 bump 校准池
+- 可以作为观察写进 `rubric-memo.md`（标 reconstructed）
+
+---
+
+## 数据导入时保持盲度
+
+CSV 导出和 API 都会一次带回很多条帖子的数据，包括还没到复盘时间的、甚至刚发的。规则：
+
+- `x-csv-import` 的 `due` / `post` 子命令只给**指定的、已到期的**帖子写 report.md，并且只在终端打印这些帖子的数字
+- 导入器**不在对话里打印**未到期帖子的指标；`inspect` 子命令只打印列名和行数
+- 发布登记时（`cheatx-publish`）读取发出的正文做一致性检查，**只取正文列**，不打印任何计数
+- x-api 的 `text` 子命令只请求正文字段，不请求 `public_metrics`
 
 ---
 
 ## Immutable 的工程边界
 
-`## 预测` 段的不可修改是**用户体验承诺**，由 hook 层强制：
+- `hooks/prediction-immutability.sh` 在 PreToolUse(Edit|Write) 检查 `predictions/` 下的文件
+- 改动命中 `## 预测…` 段 → **exit 2**（Claude Code 只在退出码 2 时真正拦截工具调用）
+- 改 header（第一个 `##` 之前）、追加 `## 复盘` → 放行
+- 对已存在的预测文件用 Write 整体覆盖 → 拦截
 
-- `hooks/prediction-immutability.sh` 在 PreToolUse(Edit|Write) 上检查 `predictions/` 下文件
-- 命中 `## 预测` 与下一个二级标题之间任何 diff → exit 1 阻塞
-- `## 复盘` 段的追加 → 放行
+**不允许绕开的请求**：
+- "把预测写准一点" → 拒绝；要重做建 `_redo.md`
+- "概率写错了 0.5%" → 复盘段追加更正说明
+- "我前面没考虑 RP=4，重打" → 同上
 
-**禁止的"绕开"模式**（子 skill 必须拒绝）：
-- "把预测段重写得更准一点" → 拒绝。如有正当理由重做，创建新文件 `<原文件名>_redo.md`，原文件保留
-- "我的概率分布写错了 0.5%，让我改一下" → 拒绝。在复盘段追加 `修正：原概率分布 X% 应为 Y%，于 <date> 发现笔误`
-- "我前面没考虑 SR=4，重打一下分" → 拒绝。同上路径
+唯一合法 bypass：纯 markdown 排版错误，用户手动设 `CHEATX_BYPASS_IMMUTABILITY=1` 单次执行，git history 留痕。
 
-唯一允许编辑预测段的场景：**纯 markdown 排版错误**（标题层级错误、列表 bullet 格式错），且用户明确说明这是格式修复。这种情况 hook 仍会阻塞，需要用户显式 bypass（手动设置环境变量 `CHEAT_BYPASS_IMMUTABILITY=1` 单次）——bypass 应在 git history 留痕。
+> hook 拦不住 Bash 里的 `sed -i` 之类改文件——这是君子协定的部分。`cheatx-retro` 的前后哈希校验是第二道防线。
 
 ---
 
-## 文件名约定（**三处一致**）
-
-一个内容三处文件，**用同一组 `<date>_<id>_<short>` 命名**：
+## 文件名约定（三处一致）
 
 ```
-scripts/<date>_<id>_<short>.md        ← pre-shoot 草稿（cheat-seed 写或用户写）
-predictions/<date>_<id>_<short>.md    ← immutable 预测（cheat-predict 写）
-videos/<date>_<id>_<short>/           ← 拍后才建（cheat-shoot 创建）
-  ├── script.md                       ← 用户提供的最终拍摄稿
-  └── report.md                       ← T+3d 数据（cheat-retro 写）
+drafts/<date>_<id>_<short>.md
+predictions/<date>_<id>_<short>.md
+posts/<date>_<id>_<short>/
 ```
 
-- `<date>`：**草稿首次落盘日期**（即 `scripts/<id>.md` 的创建日），不是预测日 / 拍摄日 / 发布日。理由：保持 ID 稳定——草稿大改后 hash 变了仍想保持文件可追溯
-- `<id>`：12 位 sha256 前缀，对**草稿首次落盘的内容**做 hash。用户 edit 草稿后**不变**——便于跨文件引用
-- `<short>`：3-8 字中文或英文短名，便于人类辨识
-
-Reconstructed 重做：在 `<short>` 后加 `_redo`，三处都加：
-- `scripts/<date>_<id>_<short>_redo.md`
-- `predictions/<date>_<id>_<short>_redo.md`
-- `videos/<date>_<id>_<short>_redo/`
-
-原文件保留（不删）。
+- `<date>` 草稿首次落盘日；`<id>` 草稿首次落盘内容 sha256 前 12 位，之后不变；`<short>` 3-8 字
 
 ---
 
-## 子 skill 必须做的检查清单
+## 子 skill 检查清单
 
-`cheat-predict` 启动时：
-1. 读 `BLIND_CHECK` 常量
-2. 询问用户该作品当前发布状态（未发 / 已发 < RETRO_WINDOW_DAYS / 已发 ≥ RETRO_WINDOW_DAYS）
-3. 询问对话历史里是否提到过该作品的任何后续数据（如有，自检对话里有没有 "播放/阅读/点赞/评论" 等关键词）
-4. 若 #2 或 #3 命中破坏条件 → 按 `BLIND_CHECK` 模式处理
-5. 通过后才允许写 `predictions/*.md`
+`cheatx-predict`：执行上面的自检 → 通过才写文件。
 
-`cheat-retro` 启动时：
-1. 读目标 prediction 文件
-2. **先在内存里 cache 住 `## 预测` 段**——后续任何对该文件的写都必须先校验该段未变
-3. 抓数据 → 追加 `## 复盘` 段
-4. 写完后**再次校验**：写入后该文件的 `## 预测` 段哈希应等于步骤 2 的 cache。不等 → 报错并回滚
+`cheatx-retro`：
+1. 读目标预测文件，在内存里 cache 所有 `## 预测…` 段
+2. 拿数据 → 追加 `## 复盘`
+3. 写完重新读文件，所有预测段的合并哈希必须等于第 1 步 → 不等就报错并回滚
 
-主 SKILL.md：
-- 用户说出"重写预测" / "改一下预测段" / "你之前预测错了我帮你改" 时，**直接拒绝并解释**，引导改用 `_redo.md` 路径
+主 SKILL.md：用户要求改预测 → 直接拒绝，引导 `_redo.md`。
 
 ---
 
-## 异常状态处理
+## 异常状态
 
 | 场景 | 处理 |
 |---|---|
-| 预测文件不小心被人手编辑了预测段 | 不自动回滚（破坏更大）。下次 `cheat-retro` 检测到不一致 → 在复盘段追加 `**Integrity warning**: 预测段于 <ISO timestamp> 被外部修改，无法保证盲度`，校准价值降级为"参考"，不计入 bump 校准池 |
-| 预测文件遗失 / 被删 | git log 找回。找不到 → 在 `rubric_notes.md` 记录"<id> 预测文件遗失，校准池缺该样本" |
-| 用户原本是 cold-start，半路想"补"已发作品的预测 | 一律记为 `**Reconstructed retrospective**`，不计入校准池——这是补的不是预测。可作为"观察"记录到 `rubric_notes.md` |
+| 预测段被外部手改 | 不自动回滚。复盘段追加 `**Integrity warning**: 预测段于 <时间> 被外部修改`，样本不进 bump 校准池 |
+| 预测文件丢失 | git log 找回；找不到就在 `rubric-memo.md` 记"<id> 预测文件遗失" |
+| 发了但忘了预测 | reconstructed，不计入校准池 |
+| 发出正文和预测稿差 ≥ 30% | 复盘段 Integrity warning，bump 时降权（详见 prediction-anatomy.md） |
 
 ---
 
-## 反模式（必须拒绝的请求）
+## Why
 
-- 「帮我预测一下，但我先告诉你播放量你来反推就行」 → 拒绝。直接破坏盲度
-- 「这条已经发了 5 天数据出来了，但你假装没看到，给我做个预测看会不会准」 → 拒绝。请改用 `_redo.md` 走 reconstructed 路径
-- 「上次预测算错了，帮我把概率分布改一下」 → 拒绝。在复盘段说明
-- 「能不能跳过 blind check 我有特殊原因」 → 询问原因；只有"格式修复"是合法的 bypass 理由
+盲预测是校准循环的**唯一信号源**。预测段一旦能事后修改，所有"哪个维度被验证 / 推翻"都失去基线。
 
----
-
-## Why（为什么这套这么严）
-
-盲预测是整个 cheat-on-content 校准循环的**唯一信号源**。一旦预测段被事后修改，所有"哪个维度被验证 / 推翻"的判断都失去基线——你不知道当初是真预测对了，还是事后改对了。
-
-校准价值 = 预测精度 × 预测可信度。
-- 预测精度可以靠 rubric 升级慢慢提升。
-- 预测可信度一旦破坏不可恢复——**这是为什么 immutability 是 hook 层强制，不是君子协定**。
+预测精度可以靠 rubric 升级慢慢提高；预测可信度一旦破坏不可恢复——所以 immutability 是 hook 层强制，不是君子协定。
