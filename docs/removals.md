@@ -16,6 +16,8 @@ cheat-on-x 从 [cheat-on-content](https://github.com/XBuilderLAB/cheat-on-conten
 | `.github/workflows/star-history.yml`、`tools/gen-star-history.py`、`tools/xkcd-font.css`、`docs/star-history.svg` | 上游仓库的 star 曲线自动刷新 | 上游同路径 |
 | `docs/guancha-no1.svg` | 上游的观猹热榜徽章，属于上游项目的荣誉 | 上游同路径 |
 | `templates/content.db.schema.sql` | 可选 SQLite 表结构，按视频字段设计，上游也还没有工具使用它。X 版只用 markdown | 上游同路径 |
+| `docs/logo.svg` | 上游作者的个人品牌 logo。X 版换成 `docs/logo-x.svg` | 上游同路径 |
+| `CHANGELOG.md` 的上游历史条目 | X 版从 0.1.0 重新记；上游历史在上游仓库，或 `git show d88d004:CHANGELOG.md` | 上游同路径 |
 | `examples/script_patterns.example.md` | 视频博主的真实写作 pattern 范例。X 版没有可公开的真实 X 账号范例，不编造假数据充当范例 | 上游同路径 |
 
 ## 改名对照

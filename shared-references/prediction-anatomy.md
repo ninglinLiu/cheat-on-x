@@ -109,7 +109,7 @@ posts/<date>_<id>_<short>/            ← 定稿后才建（cheatx-queue）
 
 ## 组件 3：预测主体 ⭐ immutable
 
-`hooks/prediction-immutability.sh` 拦截从 `## 预测` 到下一个非预测 `##` 之间的任何改动。
+`hooks/prediction-immutability.sh` 拦截从第一个 `##`（输入快照）到 `## 复盘` 之前的任何改动——组件 2-7 全部锁定，不只是本节。
 
 ```markdown
 ## 预测 v1

@@ -42,7 +42,7 @@
 
 ## 预测 v1
 
-> ⚠️ 本段 immutable——`prediction-immutability` hook 会拦截对本段的修改。要重做请建 `<本文件名>_redo.md`。
+> ⚠️ 从"输入快照"到"关键校准假设"全部 immutable——`prediction-immutability` hook 会拦截修改。要重做请建 `<本文件名>_redo.md`。
 
 **Bucket**: `<退步|持平|命中|小爆|大爆>`（`<下限>–<上限>` 曝光）
 **中枢**: `<曝光数>`

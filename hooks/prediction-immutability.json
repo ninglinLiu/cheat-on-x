@@ -1,15 +1,14 @@
 {
-  "_comment": "cheat-on-content prediction immutability hook. Blocks edits to '## 预测' / '## Prediction' sections in predictions/*.md files. Merge this into your project's .claude/settings.json on /cheat-init.",
+  "_comment": "cheat-on-x prediction immutability hook. Blocks edits to '## 预测' / '## Prediction' sections of predictions/*.md (exit 2 = block). Merged into the project's .claude/settings.json by /cheatx-init.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/prediction-immutability.sh",
-            "timeout": 3,
-            "async": false
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/prediction-immutability.sh\"",
+            "timeout": 10
           }
         ]
       }

@@ -1,8 +1,8 @@
 <h1 align="center">
-  <img src="docs/logo.svg" alt="Cheat on Content" width="720">
+  <img src="docs/logo-x.svg" alt="Cheat on X" width="720">
 </h1>
 
-<h2 align="center">Cheat on Content</h2>
+<h2 align="center">Cheat on X</h2>
 
 <p align="center">
   <strong>English</strong>
@@ -11,171 +11,131 @@
 </p>
 
 <p align="center">
-  <a href="https://watcha.cn/products/cheat-on-content">
-    <img src="docs/guancha-no1.svg" alt="Watcha Hot List · 观猹热榜 · #1" width="328">
-  </a>
-</p>
-
-<p align="center">
 <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.1.0-orange" alt="Version"></a>
 &nbsp;
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+&nbsp;
+<a href="https://github.com/XBuilderLAB/cheat-on-content"><img src="https://img.shields.io/badge/based%20on-cheat--on--content-black" alt="Based on cheat-on-content"></a>
 </p>
 
 <p align="center">
-For content creators — a skill that turns every post into a calibrated experiment.
-</p>
-
-<p align="center">
-You're reading this. The skill predicted it.<br>
-It turns every "I feel this will go viral" into a calibrated experiment.<br>
-It took me from zero to 1M followers in a month. It said I'd write this. I did.<br>
-Your doubt — predicted too.
+The X (Twitter) edition of <a href="https://github.com/XBuilderLAB/cheat-on-content">cheat-on-content</a>:<br>
+every post you ship becomes a bet you wrote down <em>before</em> the numbers showed up.
 </p>
 
 ---
 
-## 🎬 What it actually does
+## 🎬 What it does
 
-Most creators live in the same gambling loop:
+Most people on X are stuck in the same loop:
 
-> Publish → Numbers come in → Learn nothing → Roll the dice again
+> Post → watch the counter → learn nothing → post again
 
-A creator who's shipped 200 pieces is barely 10% sharper than someone who's shipped 1 — because they never **kept books** after each round.
+**Cheat on X** makes every judgment get written down, settled against the data, and folded back into the next one:
 
-**Cheat on Content** makes every judgment get logged, retrospected, absorbed into the next:
+📊 Score → 🎯 Blind-bet → 🚀 Post → 📈 T+48h retro → 🧬 Evolve your rubric
 
-📊 Score → 🎯 Blind-predict → 🚀 Publish → 📈 T+3d retro → 🧬 Evolve your rubric
-
-This isn't motivation. It's **compounding** — every piece you don't retro is silently eroding your ability to see yourself.
-
-One month in = you have a hit-formula that's **only yours**.
-Three months in = you're 10× sharper than your first-day self.
+The method is cheat-on-content's. Everything that touches the platform is rebuilt for X.
 
 ---
 
-## 🌀 Origin
+## 🧭 Why X needs its own version
 
-> I never believed in fate. Until this skill made me film a video — and predicted exactly how much traffic that video would pull.
->
-> I tried to break it. I told my audience. I hoped collective observation would collapse the wave function and shift the trajectory.
->
-> The data was accurate.
->
-> I didn't escape fate. I just moved from first-order to second-order.
->
-> If even my awakening — even my audience's observation — was already in its prediction, then right now, reading this:
-> are you here out of curiosity, or just closing the algorithm's last move?
->
-> — *the creator*
+| | cheat-on-content (video) | Cheat on X |
+|---|---|---|
+| Unit | one video | one post: single / thread / long post / Article / quote / reply |
+| Cadence | a few videos a week, "shot" vs "published" | several posts a day; **quick bets** and **batch predict / batch retro** |
+| Retro window | T+3d | **T+48h** (For You drops candidates older than 48h); long posts & Articles T+7d |
+| Rubric | opinion-video dimensions (emotion, hook, quotable lines…) | 8 dimensions mapped to the actions X's ranker predicts (below) |
+| Buckets | absolute / ratio | multiples of **your own per-form baseline** (median of your last 10 posts of that form) |
+| Data | logged-in browser scrapers per platform | **userscript CSV export** (free, default) · X API (optional, pay-per-use) · paste |
+| Covariates | — | posting hour, gap since your last post, Premium, link, media, followers — recorded on every bet |
 
----
+## 🧠 Dimensions grounded in X's ranker
 
-## ⚖️ How it differs from other "creator tools"
+X open-sourced its For You ranker in Jan 2026 ([xai-org/x-algorithm](https://github.com/xai-org/x-algorithm)). Its Phoenix model predicts a probability for each user action on a candidate post, then takes a weighted sum. The weights aren't published, so v0 doesn't pretend to know them: seven positive dimensions are equal-weighted, negative feedback is a penalty, and **your own retros** decide the real weights.
 
-| Others | This |
+| Dimension | Actions it targets |
 |---|---|
-| Give you "inspiration" | Make **your own intuition** measurable |
-| AI writes for you | AI **judges** for you — the script stays yours |
-| Ship 10 versions, A/B test | Ship one — **bet** in writing, settle the books with data |
-| Static dashboard | An **evolving rubric** — your formula 3 months from now isn't the starting one |
+| HK Hook | dwell, click into the post, photo expand / "not dwelled" |
+| RP Reply pull | reply (and the author replying back) |
+| SV Save & send | share via DM / copy link, bookmark |
+| RS Repost & quote | repost, quote |
+| DW Dwell | dwell time |
+| FT Follow trigger | profile click, follow author |
+| NF Niche fit | in-network reach + embedding retrieval for out-of-network |
+| NR Negative risk (penalty) | not interested, mute, block, report |
 
-In a sentence: other tools help you "ship more." This helps you "judge sharper."
-
----
-
-## 🤔 Can't I just use ChatGPT / DeepSeek / Doubao?
-
-Those are **general assistants** — they tell everyone the same thing. You ask "will this go viral?" and the answer is fitted to global average opinion, not your channel. Ask again tomorrow — same answer. **It doesn't remember you. It doesn't change because of you.**
-
-This is **your own ops expert** — serving only your one channel:
-
-- The scoring formula is reverse-engineered from **your** history, not the global training distribution
-- Every piece you ship updates its understanding — by month three, judgment accuracy is 10× sharper than day one (**auto-evolving**)
-- It knows your benchmark account, your cadence, the last three reasons you flopped — things ChatGPT forgets after the first reply
-
-General LLMs help everyone. This helps **your** account.
+```
+v0 composite = (HK + RP + SV + RS + DW + FT + NF) / 7 × 2 − NR × 0.4
+```
 
 ---
 
-## 🛡️ Why the loop actually evolves
+## 🛡️ The three rules (unchanged from upstream, enforced harder)
 
-📝 **Every piece is logged**: Score and prediction get written before publish, archived end-to-end. Three days later you settle accounts — you see exactly where you were sharp, where you were off. No more vague "I feel this one didn't land."
-
-🔁 **It gets sharper**: Three same-direction misses in a row, the tool actively prompts you to upgrade your scoring formula. **You don't have to remember — it remembers for you.**
-
-🛡️ **Upgrades have a brake**: Switching the formula requires re-scoring all historical samples — only released if it ranks more accurately than the old. Plus a cross-model independent audit — **so you can't fool yourself.**
-
-🪒 **The rubric is a workbench, not a museum**: Observations refuted by data get deleted; observations absorbed into formal dimensions also get deleted. It only holds what's most useful right now.
+1. **Blind prediction.** The bet is written before you hit Post. The body of every prediction file (scores, bucket, reasoning, anchors, counterfactuals) is locked by a PreToolUse hook that **exits 2**, so the edit is actually blocked.
+2. **Bump = full re-score.** Changing the formula means re-scoring the calibration pool with a context-isolated blind sub-agent. Then `tools/rank_check.py` must show a Spearman gain that holds in ≥80% of bootstrap resamples with no per-form regression, and a different model has to audit the change.
+3. **The rubric is a workbench, not a museum.** Observations with real numbers live in `rubric-memo.md`. `rubric_notes.md` stays abstract, because it is the only file the blind scorer reads, and `tools/leak_check.py` guards it.
 
 ---
 
 ## 📦 Install
 
 ```bash
-git clone https://github.com/XBuilderLAB/cheat-on-content.git
-cd cheat-on-content
-bash install.sh
+git clone <this-repo-url> cheat-on-x
+cd cheat-on-x
+bash install.sh            # Claude Code   (--codex for Codex, --all for both)
 ```
 
-> ⚠️ **Upgrading from v0.x?** Run `/cheat-migrate` in your content project after `git pull`. The 1.3 → 1.4 migration is **BREAKING for blind-channel integrity** — it splits `rubric_notes.md` so the blind sub-agent can't leak actuals. Without migrate, blind scoring will keep flagging `non_blind_warning`. See [CHANGELOG](CHANGELOG.md) and [migrations/1.3-to-1.4.md](migrations/1.3-to-1.4.md).
+Fifteen `cheatx-*` skills get linked into your agent's skill directory. They can sit next to upstream `cheat-*` skills without clashing.
 
-14 sub-skills are symlinked into your agent's skill directory. One install, every content project gets it.
-
-**Supported agents**: Claude Code (default) · Codex (`bash install.sh --codex`) · Both (`bash install.sh --all`)
-
-> Frozen version: `bash install.sh --copy` / `bash install.sh --codex --copy`
->
-> Uninstall: `bash uninstall.sh` / `bash uninstall.sh --codex` (your content data is not touched)
+**Data export (recommended):** install [`userscripts/cheatx-exporter.user.js`](userscripts/README.md) in Tampermonkey or Violentmonkey. While you browse x.com it reads the data the page already loaded, and one click exports a CSV. It sends no extra requests and uploads nothing.
 
 ---
 
 ## 🚀 First run
 
-In your content project directory, open a skill-compatible agent and say:
+In an empty folder for your X account, open Claude Code and say:
 
 ```
-初始化 cheat-on-content
+初始化 cheat-on-x        (or: init cheat-on-x)
 ```
 
-(or `init cheat-on-content`)
-
-Five yes/no questions complete onboarding. **Strongly recommend importing a benchmark account** — 5–10 samples and the tool gets an anchor immediately. Without one, your first 5 predictions land at ±50% precision.
-
----
+It asks eight questions: handle and Premium, the forms you post, language, posts per day, history, data route, topic pool, and hooks. It can then import your recent posts to set per-form baselines and pull in a benchmark account.
 
 ## ⚡ Daily use
 
 ```
-score this scripts/<...>.md       → grade only
-start prediction scripts/<...>.md → blind prediction + decision log
-shot scripts/<...>.md             → create video folder + buffer +1
-shipped https://...                → buffer -1
-retro videos/<...>/                → T+3d data + retrospective
-status / fetch trends / find topic / bump rubric / find benchmark
+找选题 / "help me write one about X"     → drafts/…
+快押 drafts/…  |  启动预测 …  |  批量预测 drafts/
+定稿 drafts/…                            → queue
+已发 https://x.com/you/status/…          → registers the post, schedules the retro
+复盘到期的 imports/cheatx-mine-….csv      → batch retro of everything due
+X 状态 · 推荐今天发什么 · 抓 X 热点 · 升级 rubric · 导入对标账号 @someone
 ```
 
-Hook-aware agents auto-report buffer + pending retros + top candidates at every session start — no need to ask. Other agents: just say `status`.
+---
 
-Full workflow + sub-skill details: see [SKILL.md](SKILL.md).
+## ⚠️ Honest limitations
+
+- **No calibrated X rubric ships with this.** Upstream's opinion-video rubric was fitted on 25+ real videos. The X rubric is a v0 prior built from the ranking code, not from data. Expect ±60% on your first bets.
+- The userscript relies on the shape of X's GraphQL responses. It's tested on synthetic fixtures; try it once on your own account before relying on it.
+- X Analytics CSV column names come from common export formats, not from a verified 2026 export. If yours don't map, run `import_csv.py inspect` and add `--map`.
+- X API prices in `xapi.py` come from third-party summaries. Check docs.x.com.
+
+## 🧪 Tests
+
+```bash
+python -m unittest discover -s adapters/perf-data/x-csv-import -p "test_*.py"
+python -m unittest discover -s adapters/perf-data/x-api -p "test_*.py"
+python -m unittest discover -s tools -p "test_*.py"
+python -m unittest discover -s hooks -p "test_*.py"        # needs bash (Git Bash on Windows)
+node --test userscripts/test/exporter.test.js
+```
 
 ---
 
-## 📈 Star History
+## 📜 License & credit
 
-<a href="https://star-history.com/#XBuilderLAB/cheat-on-content&Date">
-  <img src="docs/star-history.svg" alt="Star History Chart" width="720">
-</a>
-
----
-
-## 📜 License
-
-MIT. Commercial use, modification, closed-source integration — all fine.
-
----
-
-*Is this cheating? So was the calculator. So was Google.*
-*The future doesn't reward effort — it rewards those who see the pattern first.*
-
-*You reading this line — that's predicted too.*
+MIT. Derived from [XBuilderLAB/cheat-on-content](https://github.com/XBuilderLAB/cheat-on-content) (MIT), whose method, protocols and blind-scoring design this edition keeps. [docs/removals.md](docs/removals.md) lists what was removed for X and where upstream keeps it.

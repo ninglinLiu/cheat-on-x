@@ -2,9 +2,9 @@
 """
 diff_pct.py — char-level diff_pct on normalized text.
 
-Replaces the legacy line-level diff in cheat-shoot Phase 3b, which
-inflated diff_pct for spoken-style transcripts (long markdown lines vs
-short transcribed lines) and falsely triggered v2 re-predictions.
+Inherited from upstream cheat-on-content (where it replaced the line-level diff in
+cheat-shoot Phase 3b). In cheat-on-x it backs tools/posted_text_check.py, which
+cheatx-queue / cheatx-publish use to compare draft, final and posted text.
 
 Algorithm:
   1. Normalize both files (strip markdown elements, collapse whitespace)

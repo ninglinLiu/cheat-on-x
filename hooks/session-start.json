@@ -1,5 +1,5 @@
 {
-  "_comment": "cheat-on-content SessionStart hook. Auto-renders 4-6 line status report at every new conversation. Synchronous so the report appears in Claude's context BEFORE first reply. Silently exits if not in a cheat-on-content project (no .cheat-state.json found).",
+  "_comment": "cheat-on-x SessionStart hook. Prints a short status block (due retros, today's posts, queue, candidates, confidence) before the first reply. Silent outside cheat-on-x projects (no .cheatx-state.json).",
   "hooks": {
     "SessionStart": [
       {
@@ -7,9 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/session-start.sh",
-            "timeout": 5,
-            "async": false
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/session-start.sh\"",
+            "timeout": 10
           }
         ]
       }

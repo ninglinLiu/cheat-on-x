@@ -1,15 +1,11 @@
 {
-  "_comment": "cheat-on-content meta-logging hook. Passively records local event metadata to .cheat-cache/usage.jsonl. It stores event type, tool/file metadata, and prompt presence/length only — not raw prompt excerpts. All hooks are async fire-and-forget — never blocks. Used by /cheat-status to compute things like 'distance since last bump'.",
+  "_comment": "cheat-on-x meta-logging hook. Passively records event metadata to .cheatx-cache/usage.jsonl (event type, tool, file, prompt presence/length — never prompt text). Background, never blocks.",
   "hooks": {
     "PostToolUse": [
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/log-event.sh tool_use &",
-            "timeout": 5
-          }
+          { "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/log-event.sh\" tool_use &", "timeout": 5 }
         ]
       }
     ],
@@ -17,11 +13,7 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/log-event.sh user_prompt &",
-            "timeout": 5
-          }
+          { "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/log-event.sh\" user_prompt &", "timeout": 5 }
         ]
       }
     ],
@@ -29,11 +21,7 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/log-event.sh session_start &",
-            "timeout": 5
-          }
+          { "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/log-event.sh\" session_start &", "timeout": 5 }
         ]
       }
     ],
@@ -41,11 +29,7 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.cheat-hooks/log-event.sh session_end &",
-            "timeout": 5
-          }
+          { "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR}/.cheatx-hooks/log-event.sh\" session_end &", "timeout": 5 }
         ]
       }
     ]

@@ -1,155 +1,174 @@
 #!/usr/bin/env bash
 #
-# cheat-on-content / prediction-immutability hook
+# cheat-on-x / prediction-immutability hook  (PreToolUse: Edit|Write|MultiEdit)
 #
-# Wires PreToolUse(Edit|Write) → blocks any edit that touches the
-# '## 预测' / '## Prediction' section of a file under predictions/.
+# Locks the body of every predictions/*.md that has a '## 预测…' section: everything from the
+# first '## ' heading (输入快照, 预测 v1/v2, 推理因素, 锚点对比, 反事实场景, 关键校准假设) up to the
+# '## 复盘' heading. (Upstream cheat-on-content only locked the '## 预测' heading's own section,
+# which left reasoning / anchors / counterfactuals / the scores editable after the fact.)
 #
 # Allows:
-#   - Writing brand-new prediction files
-#   - Editing the file's metadata header (above first ##)
-#   - Appending to the '## 复盘' / '## Retrospective' section
-#   - Touching files outside predictions/
-#
+#   - creating a brand-new prediction file (Write to a path that does not exist yet)
+#   - editing the metadata header (above the first '## ') — cheatx-publish writes there
+#   - inserting '## 预测 v2' right before '## 复盘' (old_string starting at '## 复盘')
+#   - appending inside / after '## 复盘' / '## Retrospective'
+#   - files outside predictions/
 # Blocks:
-#   - Any change to lines between '## 预测' (or '## Prediction') and the next H2
+#   - any Edit / MultiEdit whose old_string overlaps the locked body
+#   - Write that would overwrite an existing prediction file
 #
-# Bypass (rare, for true formatting-only fixes):
-#   CHEAT_BYPASS_IMMUTABILITY=1 — single-shot bypass; logs a warning to stderr
+# Exit codes (Claude Code PreToolUse contract):
+#   0 = allow
+#   2 = BLOCK — stderr is fed back to Claude. (Exit 1 would NOT block: Claude Code treats
+#       any non-2 non-zero exit as a non-blocking error and runs the tool anyway.)
 #
-# Requirements: bash 3+, jq, diff. Mac default install has all of these.
+# Bypass (pure markdown-formatting fixes only, visible in git history):
+#   CHEATX_BYPASS_IMMUTABILITY=1
 #
-# Exit codes:
-#   0 = allow tool call to proceed
-#   1 = block tool call (Claude Code will surface stderr to the model)
+# Needs python3/python (preferred, exact overlap check) or jq + awk + grep (conservative fallback).
 
 set -uo pipefail
 
-# Single-shot bypass — opt-in, logs prominently
-if [[ "${CHEAT_BYPASS_IMMUTABILITY:-0}" == "1" ]]; then
-  echo "[cheat-on-content] ⚠️  IMMUTABILITY BYPASS active (CHEAT_BYPASS_IMMUTABILITY=1)" >&2
-  echo "[cheat-on-content] ⚠️  This should only be used for pure markdown-formatting fixes." >&2
-  echo "[cheat-on-content] ⚠️  Bypass will be visible in git history." >&2
+if [[ "${CHEATX_BYPASS_IMMUTABILITY:-0}" == "1" ]]; then
+  echo "[cheat-on-x] ⚠️  IMMUTABILITY BYPASS active (CHEATX_BYPASS_IMMUTABILITY=1) — formatting fixes only." >&2
   exit 0
 fi
 
-# Read tool call payload from stdin (Claude Code passes JSON)
 input=$(cat)
-if [[ -z "$input" ]]; then
-  # No input — let it through (defensive default; nothing to check)
-  exit 0
-fi
+[[ -z "$input" ]] && exit 0
 
-# Extract tool name and file path
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || echo "")
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-
-# Only intercept Edit and Write
-if [[ "$tool_name" != "Edit" && "$tool_name" != "Write" ]]; then
-  exit 0
-fi
-
-# Only intercept files under predictions/
-if [[ -z "$file_path" ]]; then
-  exit 0
-fi
-
-case "$file_path" in
-  */predictions/*.md|predictions/*.md)
-    : # match — continue checking
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-
-# Allow Write if the file does not yet exist (creating new prediction)
-if [[ "$tool_name" == "Write" && ! -f "$file_path" ]]; then
-  exit 0
-fi
-
-# For Edit — extract the old_string and new_string and check whether either touches
-# the prediction section.
-#
-# Strategy: compute the byte range of the '## 预测' (or '## Prediction') section
-# in the file BEFORE the edit, then check whether the old_string lies inside that
-# range. If yes — block.
-
-if [[ "$tool_name" == "Edit" ]]; then
-  old_string=$(printf '%s' "$input" | jq -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
-  if [[ -z "$old_string" ]]; then
-    exit 0
-  fi
-
-  # Find prediction section bounds. Match '## 预测' / '## Prediction' / '## 预测 v1'
-  # / '## 预测 v2' / etc. — all version-suffixed prediction headings count as prediction
-  # sections and are locked together.
-  #
-  # Section ends at the first NON-prediction '## ' heading (typically '## 复盘').
-  prediction_section=$(awk '
-    /^## / {
-      if ($0 ~ /^## (预测|Prediction)([^a-zA-Z]|$)/) {
-        in_pred=1; print; next
-      } else if (in_pred) {
-        exit
-      }
-    }
-    in_pred { print }
-  ' "$file_path" 2>/dev/null || echo "")
-
-  if [[ -z "$prediction_section" ]]; then
-    # File has no prediction section — let the edit through.
-    # (Could be a non-conforming prediction file or an edge case.)
-    exit 0
-  fi
-
-  # Check whether old_string appears inside the prediction section.
-  # We use grep -F (literal) on a temporary file because old_string may contain regex chars.
-  pred_tmp=$(mktemp)
-  trap "rm -f '$pred_tmp'" EXIT
-  printf '%s' "$prediction_section" > "$pred_tmp"
-
-  if grep -qF -- "$old_string" "$pred_tmp" 2>/dev/null; then
-    cat >&2 <<EOF
-
-[cheat-on-content] 🚫 BLOCKED: edit targets the '## 预测' / '## Prediction' section of:
-  $file_path
-
-This violates principle #1 of cheat-on-content: predictions are immutable.
-Once written, the prediction section can never be modified — only the
-'## 复盘' / '## Retrospective' section can be appended to.
-
-What to do instead:
-  • If you want to redo the prediction with new info, create a NEW file:
-      ${file_path%.md}_redo.md
-    The original must be preserved.
-  • If you noticed a factual mistake AFTER seeing data, document it in the
-    '## 复盘' section: "Correction: original probability X% should have been Y%".
-  • If this is a pure markdown-formatting fix (no semantic change), you can
-    bypass once with: CHEAT_BYPASS_IMMUTABILITY=1 (logs to stderr, visible in git).
-
-See: shared-references/blind-prediction-protocol.md
-EOF
-    exit 1
-  fi
-
-  exit 0
-fi
-
-# Write tool on an existing file — that's a full overwrite, definitely touches prediction section.
-if [[ "$tool_name" == "Write" && -f "$file_path" ]]; then
+block_msg() {
   cat >&2 <<EOF
 
-[cheat-on-content] 🚫 BLOCKED: Write would overwrite an existing prediction file:
-  $file_path
+[cheat-on-x] 🚫 BLOCKED: $1
+  $2
 
-Use Edit on the '## 复盘' section to append retrospective content.
-Use a new '_redo.md' file path to create a redo prediction.
-The original prediction file must be preserved verbatim.
+预测是 immutable 的（原则 #1）。写完之后预测段一个字都不能改，只能往 '## 复盘' 追加。
+
+要做的是：
+  • 想基于新信息重做预测 → 新建 ${2%.md}_redo.md，原文件保留
+  • 发现看过数据后才意识到的错误 → 在 '## 复盘' 段写更正说明
+  • 纯 markdown 排版修复 → 单次设置 CHEATX_BYPASS_IMMUTABILITY=1（git 里留痕）
 
 See: shared-references/blind-prediction-protocol.md
 EOF
-  exit 1
+}
+
+# ---------------------------------------------------------------- preferred path: Python
+PY=""
+for cand in python3 python; do
+  # skip the Windows Store "python" stub (it can hang or open the Store instead of running)
+  [[ "$(command -v "$cand" 2>/dev/null)" == *WindowsApps* ]] && continue
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys; sys.exit(0 if sys.version_info >= (3, 6) else 1)" >/dev/null 2>&1; then
+    PY="$cand"
+    break
+  fi
+done
+
+if [[ -n "$PY" ]]; then
+  verdict=$(CHEATX_HOOK_INPUT="$input" "$PY" - <<'PY'
+import json, os, re, sys
+
+try:
+    data = json.loads(os.environ.get("CHEATX_HOOK_INPUT") or "{}")
+except ValueError:
+    print("allow"); sys.exit(0)
+tool = data.get("tool_name") or ""
+ti = data.get("tool_input") or {}
+fp = (ti.get("file_path") or "").replace("\\", "/")
+if tool not in ("Edit", "Write", "MultiEdit") or not re.search(r"(^|/)predictions/[^/]+\.md$", fp):
+    print("allow"); sys.exit(0)
+path = fp
+if not os.path.isabs(path) and not re.match(r"^[A-Za-z]:/", path):
+    path = os.path.join(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd(), path)
+if not os.path.isfile(path):
+    print("allow"); sys.exit(0)          # creating a new prediction file
+with open(path, encoding="utf-8", errors="replace") as f:
+    text = f.read().replace("\r\n", "\n")
+
+# Locked region = from the first '## ' heading (输入快照 / 预测 vN / 推理因素 / 锚点 / 反事实 / 校准假设)
+# up to the '## 复盘' / '## Retrospective' heading (exclusive). The header above the first '## '
+# stays editable (publish metadata), and so does everything from '## 复盘' on.
+retro_head = re.compile(r"^## (复盘|Retrospective)(?![A-Za-z])")
+pred_head = re.compile(r"^## (预测|Prediction)(?![A-Za-z])")
+first, retro, offset, has_pred = None, None, 0, False
+for line in text.splitlines(keepends=True):
+    if line.startswith("## "):
+        if retro_head.match(line):
+            retro = offset
+            break
+        if first is None:
+            first = offset
+        if pred_head.match(line):
+            has_pred = True
+    offset += len(line)
+if first is None or not has_pred:
+    print("allow"); sys.exit(0)          # not a prediction file (no '## 预测' section)
+ranges = [(first, retro if retro is not None else len(text))]
+if tool == "Write":
+    print("block-write"); sys.exit(0)
+olds = [ti.get("old_string")] if tool == "Edit" else [e.get("old_string") for e in (ti.get("edits") or [])]
+for old in olds:
+    if not old:
+        continue
+    old = old.replace("\r\n", "\n")
+    i = text.find(old)
+    while i >= 0:
+        j = i + len(old)
+        if any(i < b and j > a for a, b in ranges):
+            print("block-edit"); sys.exit(0)
+        i = text.find(old, i + 1)
+print("allow")
+PY
+)
+  case "$verdict" in
+    block-edit)
+      file_path=$(CHEATX_HOOK_INPUT="$input" "$PY" -c "import json,os;print(json.loads(os.environ['CHEATX_HOOK_INPUT'])['tool_input']['file_path'])" 2>/dev/null)
+      block_msg "edit touches the '## 预测' section of" "$file_path"
+      exit 2 ;;
+    block-write)
+      file_path=$(CHEATX_HOOK_INPUT="$input" "$PY" -c "import json,os;print(json.loads(os.environ['CHEATX_HOOK_INPUT'])['tool_input']['file_path'])" 2>/dev/null)
+      block_msg "Write would overwrite an existing prediction file (use Edit to append to '## 复盘')" "$file_path"
+      exit 2 ;;
+    *) exit 0 ;;
+  esac
 fi
 
+# ---------------------------------------------------------------- fallback: jq + awk + grep
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[cheat-on-x] ⚠️  prediction-immutability hook 无法检查：没有 python3/python，也没有 jq。预测锁当前不生效。" >&2
+  exit 1   # non-blocking: surfaces the warning without stopping the tool
+fi
+
+tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty')
+file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' | tr '\\' '/')
+case "$tool_name" in Edit|Write|MultiEdit) ;; *) exit 0 ;; esac
+case "$file_path" in */predictions/*.md|predictions/*.md) ;; *) exit 0 ;; esac
+[[ -f "$file_path" ]] || exit 0
+
+grep -qE '^## (预测|Prediction)' "$file_path" 2>/dev/null || exit 0
+# locked region: first '## ' heading up to (not including) '## 复盘' / '## Retrospective'
+section=$(awk '
+  /^## (复盘|Retrospective)/ { exit }
+  /^## / { inp=1 }
+  inp { print }
+' "$file_path" 2>/dev/null)
+[[ -z "$section" ]] && exit 0
+
+if [[ "$tool_name" == "Write" ]]; then
+  block_msg "Write would overwrite an existing prediction file (use Edit to append to '## 复盘')" "$file_path"
+  exit 2
+fi
+
+tmp_sec=$(mktemp); tmp_pat=$(mktemp)
+trap 'rm -f "$tmp_sec" "$tmp_pat"' EXIT
+printf '%s\n' "$section" > "$tmp_sec"
+# Conservative: block if any non-blank line of any old_string appears inside the prediction sections.
+# (Blank lines are dropped — an empty pattern would match every line.)
+printf '%s' "$input" | jq -r '(.tool_input.old_string // empty), (.tool_input.edits // [] | .[].old_string)' \
+  | grep -v '^[[:space:]]*$' | grep -v '^## ' > "$tmp_pat" || true
+if [[ -s "$tmp_pat" ]] && grep -qF -f "$tmp_pat" "$tmp_sec"; then
+  block_msg "edit touches the '## 预测' section of (fallback check — install python for an exact check)" "$file_path"
+  exit 2
+fi
 exit 0

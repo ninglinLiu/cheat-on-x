@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="745" height="245" viewBox="0 0 745 245" role="img" aria-label="cheat on x">
+  <rect width="745" height="245" rx="10" fill="#0f1419"/>
+  <circle cx="22" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="40" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="58" cy="20" r="6" fill="#27c93f"/>
+  <text x="372" y="25" font-family="ui-monospace, SF Mono, Menlo, Monaco, Consolas, monospace" font-size="14" fill="#8b98a5" text-anchor="middle" letter-spacing="1">— cheat-on-x —</text>
+  <text x="40" y="118" font-family="ui-monospace, SF Mono, Menlo, Monaco, Consolas, monospace" font-size="56" font-weight="700" fill="#e7e9ea">$ cheat-on-x</text>
+  <rect x="478" y="76" width="26" height="50" fill="#1d9bf0"/>
+  <text x="40" y="168" font-family="ui-monospace, SF Mono, Menlo, Monaco, Consolas, monospace" font-size="17" fill="#8b98a5">› score  ▸  bet  ▸  post  ▸  T+48h retro  ▸  evolve</text>
+  <text x="40" y="198" font-family="ui-monospace, SF Mono, Menlo, Monaco, Consolas, monospace" font-size="15" fill="#536471">calibrated predictions for every post you ship on X</text>
+</svg>
