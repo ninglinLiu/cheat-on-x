@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# cheat-on-content / install.sh
+# cheat-on-x / install.sh
 #
-# Symlinks the 15 sub-skills into Claude Code and/or Codex skill directories so
-# agents can find them globally. Re-runnable safely (overwrite after confirmation).
+# Symlinks the 15 cheatx-* sub-skills into Claude Code and/or Codex skill directories.
+# Skill names are prefixed `cheatx-` so cheat-on-x can be installed side by side with
+# upstream cheat-on-content (`cheat-*`) without collisions.
 #
-# After install, in any content project directory: open Claude Code → say "初始化"
-# → /cheat-init runs the onboarding.
+# After install, in any X content project directory: open Claude Code → say
+# "初始化 cheat-on-x" → /cheatx-init runs the onboarding.
 #
 # To uninstall: bash uninstall.sh
 #
@@ -17,34 +18,40 @@
 #   bash install.sh --all              # install for Claude Code and Codex
 #   bash install.sh --codex --copy     # Codex install, copy mode
 #   bash install.sh --reinstall-hooks <project-dir>
-#                                      # rewrite hook scripts in an existing user project's .cheat-hooks/
-#                                      # (use after git pull when CHANGELOG mentions hook script changes;
-#                                      #  does NOT touch .cheat-state.json or any user data)
+#                                      # rewrite hook scripts in an existing project's .cheatx-hooks/
+#                                      # (use after git pull when CHANGELOG mentions hook changes;
+#                                      #  does NOT touch .cheatx-state.json or any user data)
 
 set -euo pipefail
 
 SUB_SKILLS=(
-  cheat-init
-  cheat-learn-from
-  cheat-seed
-  cheat-score
-  cheat-score-blind
-  cheat-predict
-  cheat-shoot
-  cheat-publish
-  cheat-retro
-  cheat-persona
-  cheat-bump
-  cheat-recommend
-  cheat-trends
-  cheat-status
-  cheat-migrate
+  cheatx-init
+  cheatx-learn-from
+  cheatx-seed
+  cheatx-score
+  cheatx-score-blind
+  cheatx-predict
+  cheatx-queue
+  cheatx-publish
+  cheatx-retro
+  cheatx-persona
+  cheatx-bump
+  cheatx-recommend
+  cheatx-trends
+  cheatx-status
+  cheatx-migrate
+)
+
+HOOK_FILES=(
+  prediction-immutability.sh
+  session-start.sh
+  session_start.py
+  log-event.sh
 )
 
 CLAUDE_SKILLS=("${SUB_SKILLS[@]}")
-CODEX_SKILLS=(cheat-on-content "${SUB_SKILLS[@]}")
+CODEX_SKILLS=(cheat-on-x "${SUB_SKILLS[@]}")
 
-# Resolve the directory containing THIS script (the source root) — needed early for both modes
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 MODE="symlink"
@@ -54,21 +61,20 @@ TARGET_AGENT="claude"
 if [[ "${1:-}" == "--reinstall-hooks" ]]; then
   PROJECT_DIR="${2:-}"
   if [[ -z "$PROJECT_DIR" ]]; then
-    echo "❌ Usage: bash install.sh --reinstall-hooks <path-to-user-project>"
-    echo "   The user project must already have been initialized via /cheat-init."
+    echo "❌ Usage: bash install.sh --reinstall-hooks <path-to-x-project>"
     exit 1
   fi
   if [[ ! -d "$PROJECT_DIR" ]]; then
     echo "❌ Project dir not found: $PROJECT_DIR"
     exit 1
   fi
-  if [[ ! -f "$PROJECT_DIR/.cheat-state.json" ]]; then
-    echo "❌ $PROJECT_DIR is not a cheat-on-content project (no .cheat-state.json)."
-    echo "   Run /cheat-init in that directory first."
+  if [[ ! -f "$PROJECT_DIR/.cheatx-state.json" ]]; then
+    echo "❌ $PROJECT_DIR is not a cheat-on-x project (no .cheatx-state.json)."
+    echo "   Run /cheatx-init in that directory first."
     exit 1
   fi
 
-  HOOK_DST="$PROJECT_DIR/.cheat-hooks"
+  HOOK_DST="$PROJECT_DIR/.cheatx-hooks"
   mkdir -p "$HOOK_DST"
 
   echo ""
@@ -76,46 +82,34 @@ if [[ "${1:-}" == "--reinstall-hooks" ]]; then
   echo "  source: $SCRIPT_DIR/hooks/"
   echo ""
 
-  for hook_script in prediction-immutability.sh session-start.sh log-event.sh; do
-    if [[ -f "$SCRIPT_DIR/hooks/$hook_script" ]]; then
-      cp "$SCRIPT_DIR/hooks/$hook_script" "$HOOK_DST/$hook_script"
-      chmod +x "$HOOK_DST/$hook_script"
-      echo "  ✓ updated: .cheat-hooks/$hook_script"
+  for hook_file in "${HOOK_FILES[@]}"; do
+    if [[ -f "$SCRIPT_DIR/hooks/$hook_file" ]]; then
+      cp "$SCRIPT_DIR/hooks/$hook_file" "$HOOK_DST/$hook_file"
+      chmod +x "$HOOK_DST/$hook_file"
+      echo "  ✓ updated: .cheatx-hooks/$hook_file"
     else
-      echo "  ⚠️  missing in source: hooks/$hook_script (skipped)"
+      echo "  ⚠️  missing in source: hooks/$hook_file (skipped)"
     fi
   done
 
   echo ""
   echo "✅ Hook scripts reinstalled."
   echo ""
-  echo "Note: This did NOT touch:"
-  echo "  - .cheat-state.json (your data)"
-  echo "  - .claude/settings.json (hook registration — should still point at .cheat-hooks/)"
-  echo "  - rubric_notes.md / predictions/ / videos/ (your work)"
-  echo ""
-  echo "If schema also changed (CHANGELOG marks BREAKING), additionally run /cheat-migrate"
-  echo "in Claude Code from your project directory."
+  echo "Note: this did NOT touch .cheatx-state.json, .claude/settings.json,"
+  echo "      rubric_notes.md, predictions/ or posts/."
+  echo "If the schema also changed (CHANGELOG marks BREAKING), run /cheatx-migrate."
   echo ""
   exit 0
 fi
 
 for arg in "$@"; do
   case "$arg" in
-    --copy)
-      MODE="copy"
-      ;;
-    --claude)
-      TARGET_AGENT="claude"
-      ;;
-    --codex)
-      TARGET_AGENT="codex"
-      ;;
-    --all)
-      TARGET_AGENT="all"
-      ;;
+    --copy)   MODE="copy" ;;
+    --claude) TARGET_AGENT="claude" ;;
+    --codex)  TARGET_AGENT="codex" ;;
+    --all)    TARGET_AGENT="all" ;;
     --help|-h)
-      sed -n '1,35p' "$0"
+      sed -n '1,25p' "$0"
       exit 0
       ;;
     *)
@@ -126,24 +120,21 @@ for arg in "$@"; do
   esac
 done
 
-# Sanity check: confirm we're in the cheat-on-content root
 if [[ ! -f "$SCRIPT_DIR/SKILL.md" ]]; then
-  echo "❌ Missing: $SCRIPT_DIR/SKILL.md"
-  echo "   Are you running install.sh from the cheat-on-content root?"
+  echo "❌ Missing: $SCRIPT_DIR/SKILL.md — run install.sh from the cheat-on-x root."
   exit 1
 fi
 
 for s in "${SUB_SKILLS[@]}"; do
   if [[ ! -f "$SCRIPT_DIR/skills/$s/SKILL.md" ]]; then
-    echo "❌ Missing: $SCRIPT_DIR/skills/$s/SKILL.md"
-    echo "   Are you running install.sh from the cheat-on-content root?"
+    echo "❌ Missing: $SCRIPT_DIR/skills/$s/SKILL.md — run install.sh from the cheat-on-x root."
     exit 1
   fi
 done
 
 skill_source() {
   local skill="$1"
-  if [[ "$skill" == "cheat-on-content" ]]; then
+  if [[ "$skill" == "cheat-on-x" ]]; then
     echo "$SCRIPT_DIR"
   else
     echo "$SCRIPT_DIR/skills/$skill"
@@ -154,11 +145,10 @@ detect_conflicts() {
   local target_dir="$1"
   shift
   local warned=0
-
   for s in "$@"; do
-    local src
+    local src target
     src=$(skill_source "$s")
-    local target="$target_dir/$s"
+    target="$target_dir/$s"
     if [[ -e "$target" || -L "$target" ]]; then
       if [[ -L "$target" ]]; then
         local existing
@@ -173,7 +163,6 @@ detect_conflicts() {
       fi
     fi
   done
-
   return "$warned"
 }
 
@@ -181,30 +170,25 @@ install_skills() {
   local label="$1"
   local target_dir="$2"
   shift 2
-
   mkdir -p "$target_dir"
-
   echo ""
-  echo "Installing cheat-on-content for $label (mode: $MODE)"
+  echo "Installing cheat-on-x for $label (mode: $MODE)"
   echo "  source: $SCRIPT_DIR"
   echo "  target: $target_dir/"
   echo ""
-
   for s in "$@"; do
-    local src
+    local src dst
     src=$(skill_source "$s")
-    local dst="$target_dir/$s"
-
+    dst="$target_dir/$s"
     if [[ -e "$dst" || -L "$dst" ]]; then
       rm -rf "$dst"
     fi
-
     if [[ "$MODE" == "symlink" ]]; then
       ln -s "$src" "$dst"
       echo "  ✓ symlinked: $s"
     else
       cp -R "$src" "$dst"
-      if [[ "$s" == "cheat-on-content" ]]; then
+      if [[ "$s" == "cheat-on-x" ]]; then
         rm -rf "$dst/.git"
       fi
       echo "  ✓ copied:    $s"
@@ -233,7 +217,6 @@ fi
 if [[ "$TARGET_AGENT" == "claude" || "$TARGET_AGENT" == "all" ]]; then
   install_skills "Claude Code" "$HOME/.claude/skills" "${CLAUDE_SKILLS[@]}"
 fi
-
 if [[ "$TARGET_AGENT" == "codex" || "$TARGET_AGENT" == "all" ]]; then
   install_skills "Codex" "$HOME/.codex/skills" "${CODEX_SKILLS[@]}"
 fi
@@ -242,17 +225,16 @@ echo ""
 echo "✅ Install complete!"
 echo ""
 echo "Next steps:"
-echo "  1. cd into your content project (or create one):"
-echo "       mkdir ~/my-channel && cd ~/my-channel"
-echo ""
+echo "  1. cd into your X content project (or create one):"
+echo "       mkdir ~/my-x && cd ~/my-x"
 echo "  2. Open Claude Code or Codex in that directory"
+echo "  3. Say:  初始化 cheat-on-x   (or: init cheat-on-x)"
 echo ""
-echo "  3. In the chat, say:"
-echo "       初始化"
-echo "       (or: 初始化 cheat-on-content)"
+echo "  Data export (default, free): install userscripts/cheatx-exporter.user.js"
+echo "  in Tampermonkey / Violentmonkey — see userscripts/README.md"
 echo ""
 if [[ "$TARGET_AGENT" == "claude" || "$TARGET_AGENT" == "all" ]]; then
-  echo "Verify Claude install: ls -la ~/.claude/skills/ | grep cheat"
+  echo "Verify Claude install: ls -la ~/.claude/skills/ | grep cheatx"
 fi
 if [[ "$TARGET_AGENT" == "codex" || "$TARGET_AGENT" == "all" ]]; then
   echo "Verify Codex install:  ls -la ~/.codex/skills/ | grep cheat"
@@ -261,13 +243,6 @@ fi
 echo ""
 if [[ "$MODE" == "symlink" ]]; then
   echo "ℹ️  Mode: symlink — edits to source SKILL.md files take effect immediately."
-  if [[ "$TARGET_AGENT" == "codex" ]]; then
-    echo "   To switch to frozen copy: bash install.sh --codex --copy"
-  elif [[ "$TARGET_AGENT" == "all" ]]; then
-    echo "   To switch to frozen copy: bash install.sh --all --copy"
-  else
-    echo "   To switch to frozen copy: bash install.sh --copy"
-  fi
 else
   echo "ℹ️  Mode: copy — frozen at install time. Re-run install.sh to update."
 fi

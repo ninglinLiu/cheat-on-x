@@ -5,17 +5,19 @@
 Icon?
 ._*
 
-# Claude Code per-user config (含本地路径 / 个人 permission grants)
-# 整个 .claude/ 目录在源码 repo 里都是本地状态——hooks/settings 的项目级配置走用户自己的 content project 不走这里
+# Claude Code per-user config (本地路径 / 个人 permission grants)
 .claude/
 
-# Python (whisper adapter / score-curve.py 跑过留下的)
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
 .python-version
+
+# Node（userscript 测试）
+node_modules/
 
 # Secrets / environment
 .env
@@ -25,30 +27,25 @@ venv/
 *.sqlite
 *.sqlite3
 
-# 用户项目数据（万一开发者在 cheat-on-content 源码目录里跑了 cheat-init）
-# 这些文件应该在用户自己的 content project 里，不该污染源码 repo
-.cheat-state.json
-.cheat-cache/
-.cheat-hooks/
-.cheat-secrets.json
+# 用户项目数据（万一开发者在 cheat-on-x 源码目录里跑了 /cheatx-init）
+.cheatx-state.json
+.cheatx-cache/
+.cheatx-hooks/
+.cheatx-secrets.json
 predictions/
-videos/
-scripts/
+posts/
+drafts/
 samples/
+imports/
 candidates.md
 rubric_notes.md
-script_patterns.md
+rubric-memo.md
+post_patterns.md
 benchmark.md
+audience.md
 STATUS.md
 WORKFLOW.md
 content.db
-
-# adapter 跑过留下的
-.auth/
-.auth-xhs/
-.auth-linkedin/
-.auth-wechat-channels/
-.debug/
 
 # Editor / IDE
 .vscode/
