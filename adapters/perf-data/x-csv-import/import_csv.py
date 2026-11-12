@@ -175,8 +175,15 @@ def cmd_text(args) -> int:
     if not rec:
         emit({"post_id": pid, "found": False})
         return 2
-    emit({"post_id": pid, "found": True, "author": rec.get("author"),
-          "created_at": rec.get("created_at"), "text": rec.get("text")})
+    # thread: the author's own replies in the same conversation, oldest first
+    author = rec.get("author")
+    parts = [r for r in merged.values()
+             if r["post_id"] != pid and author and r.get("author") == author
+             and (r.get("conversation_id") == pid) and r.get("in_reply_to_user") == author]
+    parts.sort(key=lambda r: (r.get("created_at") or r["captured_at"], r["post_id"]))
+    thread_text = "\n\n".join([rec.get("text") or ""] + [p.get("text") or "" for p in parts]) if parts else None
+    emit({"post_id": pid, "found": True, "author": author, "created_at": rec.get("created_at"),
+          "text": rec.get("text"), "thread_parts": len(parts), "thread_text": thread_text})
     return 0
 
 

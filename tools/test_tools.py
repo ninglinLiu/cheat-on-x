@@ -52,6 +52,137 @@ class TestLeakCheck(unittest.TestCase):
             self.assertEqual(leak_check.scan(line), [], line)
 
 
+class TestPostedTextCheck(unittest.TestCase):
+    def test_clean_strips_non_content(self):
+        import posted_text_check as ptc
+        final = ("---\nform: thread\nmedia: image\n---\n\n1/ 我用 AI 写作半年后删掉了 7 个提示词\n\n"
+                 "2/ 第一个是……\n\n## 被引用 / 被回复的帖子（上下文，不打分）\n原帖正文")
+        posted = "我用 AI 写作半年后删掉了 7 个提示词\n\n第一个是…… https://t.co/abc123"
+        self.assertEqual(ptc.clean(final), ptc.clean(posted))
+
+    def test_verdicts(self):
+        import posted_text_check as ptc
+        self.assertEqual(ptc.verdict(3), "same")
+        self.assertEqual(ptc.verdict(15), "diff 15%")
+        self.assertTrue(ptc.verdict(45).endswith("⚠️"))
+
+
+PRED = """# {short} — 预测日志
+
+**Post ID**: {pid}
+**Form**: {form}
+**Baseline**: {form}=n/a（不足 3 条）→ all={base}（最近 10 条中位数）
+**Published at**: 2026-11-{day:02d}T21:00+08:00
+**Posted Text Check**: {ptc}
+
+---
+
+## 输入快照
+
+**分数 (v0)**: HK{hk} / RP3 / SV{sv} / RS3 / DW4 / FT4 / NF5 / NR1 → composite=**{comp}**
+
+## 预测 v1
+
+**Bucket**: `命中`
+**中枢**: {center}
+
+**概率分布**:
+- `退步`（<126）→ 10%
+- `持平`（126–420）→ 30%
+- **`命中`（420–1,260）→ 40%**
+- `小爆`（1,260–4,200）→ 15%
+- `大爆`（>4,200）→ 5%
+
+## 推理因素
+x
+## 锚点对比
+x
+## 反事实场景
+x
+## 关键校准假设
+x
+
+## 复盘
+
+**复盘时间**: 2026-11-{day2:02d}T21:10+08:00（发布 T+48h）
+
+### 实际数据
+- 曝光：**{imp}** → 落在 `{bucket}`（预测 `命中`）；实际 / 中枢 = **x**
+- 外生冲击：{exo}
+"""
+
+
+class TestCalibPool(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        specs = [  # form, imp, bucket, exo, ptc, hk, sv
+            ("single", "300", "持平", "无", "same", 3, 2),
+            ("single", "520", "命中", "无", "same", 4, 3),
+            ("single", "1.2K", "命中", "无", "same", 4, 4),
+            ("thread", "2,130", "小爆", "无", "same", 4, 5),
+            ("single", "9,000", "大爆", "被 @big 转发，疑似主导曝光", "same", 3, 2),
+            ("single", "700", "命中", "无", "diff 41% ⚠️", 3, 3),
+        ]
+        for i, (form, imp, bucket, exo, ptc, hk, sv) in enumerate(specs):
+            (self.dir / f"2026-11-{i + 1:02d}_id{i}_p{i}.md").write_text(PRED.format(
+                short=f"p{i}", pid=f"id{i}", form=form, base=420, day=i + 1, day2=i + 3, ptc=ptc, hk=hk, sv=sv,
+                comp="7.0", center=800, imp=imp, bucket=bucket, exo=exo), encoding="utf-8")
+        (self.dir / "2026-11-09_id9_未复盘.md").write_text(
+            PRED.format(short="x", pid="id9", form="single", base=420, day=9, day2=11, ptc="same", hk=3, sv=3,
+                        comp="6", center=500, imp="1", bucket="命中", exo="无").split("## 复盘")[0]
+            + "## 复盘\n\n（待填——复盘窗口到期后跑 `/cheatx-retro`）\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_parse_and_flags(self):
+        import calib_pool
+        recs = {Path(r["file"]).stem: r for r in calib_pool.load_dir(self.dir)}
+        self.assertEqual(recs["2026-11-03_id2_p2"]["impressions"], 1200)
+        self.assertEqual(recs["2026-11-04_id3_p3"]["dims"]["SV"], 5)
+        self.assertEqual(recs["2026-11-04_id3_p3"]["probs"]["小爆"], 0.15)
+        self.assertIn("exogenous", recs["2026-11-05_id4_p4"]["flags"])
+        self.assertIn("integrity", recs["2026-11-06_id5_p5"]["flags"])
+        self.assertFalse(recs["2026-11-09_id9_未复盘"]["retro"])
+
+    def test_baseline_excludes_flagged(self):
+        import calib_pool
+        import contextlib
+        import io
+        import json as _json
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            calib_pool.main(["baseline", str(self.dir), "--json"])
+        res = _json.loads(buf.getvalue())
+        self.assertEqual(res["counts"]["all"], 4)                    # exogenous + integrity excluded
+        self.assertEqual(res["baseline_impressions"]["single"], 520)  # median of 300, 520, 1200
+        self.assertIsNone(res["baseline_impressions"]["thread"])      # < 3 samples
+
+    def test_pool_with_formulas(self):
+        import calib_pool
+        out = self.dir / "pool.csv"
+        calib_pool.main(["pool", str(self.dir), "--out", str(out),
+                         "--formula-old", "(HK + RP + SV + RS + DW + FT + NF) / 7 * 2 - NR * 0.4",
+                         "--formula-new", "(HK + RP + SV*2 + RS + DW + FT + NF) / 8 * 2 - NR * 0.4"])
+        import csv as _csv
+        with open(out, encoding="utf-8") as fh:
+            rows = list(_csv.DictReader(fh))
+        self.assertEqual(len(rows), 4)
+        thread = next(r for r in rows if r["form"] == "thread")
+        self.assertAlmostEqual(float(thread["composite_old"]), 7.6, places=3)
+        self.assertAlmostEqual(float(thread["outcome_ratio"]), 2130 / 420, places=3)
+        self.assertAlmostEqual(float(thread["log_score"]), round(__import__("math").log(0.15), 4))
+
+    def test_formula_is_safe(self):
+        import calib_pool
+        self.assertEqual(calib_pool.eval_formula("max(HK, 2) * 2", {"HK": 1}), 4.0)
+        self.assertIsNone(calib_pool.eval_formula("HK + TM", {"HK": 1}))
+        with self.assertRaises(ValueError):
+            calib_pool.eval_formula("__import__('os').system('echo hi')", {"HK": 1})
+
+
 class TestRankCheck(unittest.TestCase):
     def rows(self, n=30, noise_old=3.0, noise_new=0.3, seed=1, form="single"):
         rng = random.Random(seed)

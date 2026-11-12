@@ -237,8 +237,12 @@ class TestCLI(FixtureMixin, unittest.TestCase):
         code, stdout, _ = run_cli(["text", str(csvp), "--id", "1001"])
         self.assertEqual(code, 0)
         obj = json.loads(stdout)
-        self.assertEqual(set(obj), {"post_id", "found", "author", "created_at", "text"})
+        self.assertEqual(set(obj), {"post_id", "found", "author", "created_at", "text", "thread_parts",
+                                    "thread_text"})
         self.assertNotIn("2130", stdout)
+        self.assertEqual(obj["thread_parts"], 1)                     # 1002 is the author's self-reply
+        self.assertTrue(obj["thread_text"].endswith("2/ 第一个……"))
+        self.assertNotIn("还可以加一个", obj["thread_text"])           # other people's replies excluded
 
     def test_due_only_processes_due_posts(self):
         proj = self.make_project()

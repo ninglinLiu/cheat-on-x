@@ -1,170 +1,148 @@
 ---
-name: cheat-publish
-description: 登记一篇内容已发布，把 URL/平台 ID/发布时间写入对应预测文件 header 和 state file。这是一个轻量动作——只更新元数据，**不动预测段任何字符**。触发词："已发布"/"I shipped"/"发布链接是 X"/"刚发完 [url]"/"publish registered"。
-argument-hint: <prediction-file-or-url> [— platform: youtube|bilibili|douyin|...]
+name: cheatx-publish
+description: 登记一条帖子已在 X 上发布：从链接解析 status id、把发布信息写进预测文件 header、检查发出的文本和预测时的定稿是否一致（只读正文，不读任何数字）、出队、排复盘到期时间。**不动预测段任何字符。**触发词："已发 https://x.com/..."/"发了"/"posted"/"I shipped"/"刚发完 [链接]"。
+argument-hint: <post-url> [prediction-file]
 allowed-tools: Bash(*), Read, Edit, Glob
 ---
 
-# /cheat-publish — 发布登记
+# /cheatx-publish — 发布登记
 
-把作品的发布元数据（URL、发布时间、平台）补到预测文件 header 与 state file。**禁止改预测段**——hook 会拦。
+把发布元数据补到预测文件 header 与 state。**禁止改预测段**——hook 会拦。
 
 ## Overview
 
 ```
-[用户：已发布 https://...]
+[已发 https://x.com/me/status/1988…]
   ↓
-[Phase 0: 找到对应的预测文件]   ← 通过 in_progress_session 或匹配
-  ↓
-[Phase 1: 解析 URL → 平台/发布时间]
-  ↓
-[Phase 2: 更新 prediction 文件 header（仅 metadata 段）]
-  ↓
-[Phase 3: 更新 .cheat-state.json，清除 in_progress_session]
+Phase 0 找到对应预测文件
+Phase 1 解析链接 → status id、handle；发布时间
+Phase 2 发出文本一致性检查（只取正文）
+Phase 3 写 header（第一个 ## 之前）
+Phase 4 更新 state：出队、pending_retros（含 due_at）、recent_publishes
+Phase 5 提醒 + 下一步
 ```
 
 ## Constants
 
-- **AUTO_DETECT_PLATFORM = true** — 从 URL 模式自动识别平台
-- **VERIFY_BLIND = true** — 提醒用户：从此刻起看到任何后续数据都会破坏盲度声明的诚信
-
-## Inputs
-
-| 必填 | 来源 |
-|---|---|
-| `<prediction-file>` 或 URL | 用户参数；缺失则用 `.cheat-state.json` 的 `in_progress_session.file` |
-| `.cheat-state.json` | 用户项目根 |
+- **TEXT_CHECK = auto**——有数据源就做发出文本检查；没有就标 `unchecked`
+- **MIN_SPACING_MINUTES = 120**（state 里可覆盖）——距上一条主帖不足时提醒
+- **MAX_PREDICT_AGE_DAYS = 7**——预测写于 7 天前以上 → 确认"真的是这条？"
 
 ## Workflow
 
-### Phase 0: 找到对应的预测文件
+### Phase 0：找预测文件
 
-按优先级：
-1. 用户参数明确给了 prediction 文件路径 → 用它
-2. 用户参数只给了 URL → 读 `.cheat-state.json` 的 `in_progress_session.file`
-3. 都没有 → 列出 `predictions/*.md` 中 header 没填 `published_at` 的文件，让用户选
+优先级：
+1. 参数给了预测文件路径
+2. 链接对应的 status id 已出现在某个预测 header 里 → 已登记过，问是否覆盖
+3. `state.queue` 里只有一条 → 就是它（确认一句）
+4. 多条 → 列出队列 + 未登记发布的预测（header 没有 `Published at`），让用户选
+5. reply：不进队列，从未登记的 reply 预测里选
 
-**警告路径**：若 `in_progress_session.file` 与用户给的 URL 时间差超过 14 天 → 提示"这个预测写于很久之前，确认是这篇？"
+没有任何预测 → "这条没有预测。要不要建一个 `_redo` reconstructed 记录？它不会进校准池。"
 
-### Phase 1: 解析平台
+### Phase 1：解析
 
-`AUTO_DETECT_PLATFORM=true` 时按 URL 模式：
+- 链接：`https://x.com/<handle>/status/<id>` / `twitter.com/...` / `x.com/i/web/status/<id>` → status id、handle
+- handle 和 `state.x_handle` 不一致 → 问"这是你的账号吗？"（对标账号的帖子不该登记在这里）
+- 发布时间：问一句，默认"现在"；接受"20 分钟前"、"21:03"
+- 距上一条主帖：从 `state.recent_publishes` 算分钟数；< `MIN_SPACING_MINUTES` → 提醒一次（不阻止）："距上一条只有 45 分钟，这条可能被作者多样性衰减打折。复盘时会记这个协变量。"
 
-| URL 模式 | 平台 |
-|---|---|
-| `youtube.com/*` `youtu.be/*` | youtube |
-| `bilibili.com/*` `b23.tv/*` | bilibili |
-| `douyin.com/*` `iesdouyin.com/*` `v.douyin.com/*` | douyin |
-| `xiaohongshu.com/*` `xhslink.com/*` | xhs |
-| `mp.weixin.qq.com/*` | wechat |
-| `substack.com/*` `*.substack.com/*` | substack |
-| `medium.com/*` `*.medium.com/*` | medium |
-| `twitter.com/*` `x.com/*` | twitter |
-| 其他 | unknown — 询问用户 |
+### Phase 2：发出文本一致性（保盲）
 
-发布时间获取：
-- 不强求自动抓——绝大多数平台需要登录态
-- 询问用户："发布时间是？（默认：现在）" → 接受 ISO 8601 或自然语言（"今天 14:30" / "20 分钟前"）
-- 解析失败 → 用 now()
+目的：确认你发出去的就是你预测的那段文本。
 
-### Phase 2: 更新 prediction 文件 header
+**只读正文，不读、不打印任何计数。**
 
-**绝不**触碰 `## 预测` 段及之后。只动文件最顶部的 metadata 块。
+- 数据源 csv：如果用户手边已有一个刚导出的文件（不常见——刚发的帖子通常还没导出）：
+  ```bash
+  python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py text imports/<file>.csv --id <status_id>
+  ```
+- 数据源 x-api：
+  ```bash
+  python <cheat-on-x>/adapters/perf-data/x-api/xapi.py text <status_id> --project .          # 先预演看费用
+  python <cheat-on-x>/adapters/perf-data/x-api/xapi.py text <status_id> --project . --yes    # 用户同意后
+  ```
+- 都没有 → 请用户把发出的正文复制过来（只要正文），或者标 `unchecked`，复盘时导入器拿到正文再补查
 
-读文件，定位到 metadata 块（在第一个 `##` 之前的所有行）。检查是否已有这些字段——有则警告"已登记过"并询问是否覆盖；无则追加：
+thread：`text` 输出里的 `thread_text` 是首条 + 你自己的后续各条拼起来的全文，用它比；只导出了首条时只比首条，并在 header 写 `same（仅首条）`。
 
-```markdown
-**Published at**: 2026-05-04T14:32:00+08:00
-**Platform**: douyin
-**URL**: https://v.douyin.com/abc123
-**Video Folder**: videos/2026-05-04_a3f2c1d4_停止期待/
-**Aweme ID**: 7234567890123456789  (douyin / 视频号 等需要的 platform-specific ID)
+比较对象：`posts/<同名>/final.md`（没有就用草稿）。用 `tools/posted_text_check.py`（会先去掉 frontmatter、"被引用的帖子"上下文段、`1/` 这类编号和短链）：
+
+```bash
+python <cheat-on-x>/tools/posted_text_check.py posts/<同名>/final.md --text "<发出的正文>"
 ```
 
-**关于 platform-specific ID**：
-- 抖音：从 URL 短链 resolve 后提取 `aweme_id`（v.douyin.com → 重定向后含 modal_id 或 item_id 参数）
-- B 站：BV 号
-- 小红书：note_id
-- YouTube：v= 参数后的 video_id
+- < 10% → `same`
+- 10-30% → `diff N%`
+- ≥ 30% → `diff N% ⚠️`——告诉用户："发出的文本和预测时差了 N%。这条复盘时会带 Integrity warning、bump 时降权。要撤回重发吗？还是接受？"
 
-如果用户给的是分享短链（无法立刻 resolve）→ 标 `Aweme ID: pending`，下次 `/cheat-retro` 时由 adapter 解析。
+### Phase 3：写 header
 
-**video folder 处理**：到 cheat-publish 这一步，对应的 `videos/<id>/` 目录**应该已经由 cheat-shoot 创建**（含 script.md）。
+只动第一个 `##` 之前的 metadata 块，用 **Edit**（不是 Write）在 header 末尾追加：
 
-- 如 video folder 不存在 → 警告"你跳过了 cheat-shoot？建议先跑 cheat-shoot 把拍摄稿登记进 video folder 再发"，**询问用户是否跳过登记直接发**：
-  - 是 → 自动建一个 video folder（fallback），但不询问稿子一致性，标 `ad_hoc_publish: true`
-  - 否 → 让用户先跑 cheat-shoot 再回来 publish
+```markdown
+**Published at**: 2026-11-12T21:03+08:00
+**Status ID**: 1988765432109876543
+**URL**: https://x.com/yourhandle/status/1988765432109876543
+**Post Folder**: posts/2026-11-12_a3f2c1d4e5b6_ai写作清单/
+**Posted Text Check**: same
+**Minutes Since Previous Post**: 95
+**Retro Due**: 2026-11-14T21:03+08:00
+```
 
-用 Edit 工具（不是 Write 重写整个文件）。
+- 已有 `Published at` → 问"覆盖吗？"，不静默覆盖
+- `posts/<同名>/` 不存在（跳过了定稿）→ 提醒"下次先 `定稿`"，自动建目录、把草稿复制成 `final.md`，header 加 `**Ad Hoc Publish**: true`
+- hook 误拦 header 编辑 → 报告问题，**不要绕过 hook**
 
-**hook 行为预期**：因为只动 metadata 段（在 `## 预测` 之前），immutability hook 应放行。如果 hook 误拦 → 报告 bug，**不要绕过 hook**。
-
-### Phase 3: 更新 state file
+### Phase 4：state
 
 ```json
 {
-  "in_progress_session": null,
-  "last_published_at": "<ISO timestamp>",
-  "last_published_file": "predictions/<filename>",
-  "last_published_video_folder": "videos/<...>/",
-  "last_published_platform_id": "<aweme_id 或 BV 号 等>",
-  "pending_retros": [
-    "predictions/<filename>"
-  ],
-  "shoots": [
-    // 移除 video_folder 匹配本次发布的项；buffer -1
-  ]
+  "queue": "[移除 post_folder 匹配的项]",
+  "pending_retros": "[追加 {file, status_id, form, published_at, due_at}]",
+  "recent_publishes": "[追加 {at, status_id, form}，只保留最近 30 条]",
+  "last_published_at": "<ISO>",
+  "last_published_file": "predictions/<…>.md"
 }
 ```
 
-**`shoots` 队列处理**（buffer 跟踪关键）：
-1. 读 state.shoots[]
-2. 找 `video_folder == 本次发布的 video_folder` 的项 → 移除
-3. 如果没找到 → 警告"buffer 队列里没有这条视频。是直接发布没经过 /cheat-shoot 吗？"——不阻塞，但提示用户下次走 /cheat-shoot 让 buffer 跟踪准确
+`due_at` = 发布时间 + `retro_window_hours`（`long` / `article` 用 `retro_window_hours_longform`）。
 
-`last_published_platform_id` 是 cheat-retro 调 adapter 时的输入——如 douyin-session 需要 aweme_id 直接抓数据。
+队列里找不到这条 → 提示"它没经过定稿"，不阻塞。
 
-`pending_retros` 是待复盘列表——`cheat-status` 会基于这个列表 + RETRO_WINDOW_DAYS 显示"今天该复盘哪些"。
-
-### Phase 4: 提醒 + 下一步 + buffer 状态
+### Phase 5：提醒
 
 ```
-✅ 登记完成：predictions/2026-05-04_a3f2c1d4e5b6_停止期待.md
-   - Published at: 2026-05-04 14:32
-   - Platform: douyin
-   - URL: https://v.douyin.com/abc123
+✅ 已登记：predictions/2026-11-12_a3f2c1d4e5b6_ai写作清单.md
+   发布 21:03 · status 1988… · 文本一致性：same
 
-📦 Buffer：N 篇（颜色 + 含义）
-   按你的 cadence（X）= N×X 天 buffer
-   [如颜色变了，提示"现在该去拍/暂停拍"]
+📦 队列 2 条（🟢）· 今天已发 2 / 目标 3
 
-⚠️  从此刻起，你看到任何关于这条作品的播放/点赞/评论数据
-    都会破坏盲度声明的诚信。如果不小心看到，告诉我——
-    我会在文件里追加一个 integrity warning。
+⚠️ 从现在起，这条的浏览数、回复、谁转发了——都别贴给我。
+   不小心看到了告诉我，我在复盘段记 integrity warning。
 
-📅 计划复盘：T+3d，约 2026-05-07
-   到时间说："复盘 predictions/2026-05-04_..."
+📅 复盘到期：11-14 21:03（T+48h）
+   到时在 x.com 打开主页、点开这条滚一遍回复，用油猴脚本"导出：我的帖子 + 回复/引用"，
+   然后说"复盘到期的 imports/<文件>.csv"
 ```
-
-Buffer 颜色由 [shared-references/cadence-protocol.md](../../shared-references/cadence-protocol.md) 派生。如本次发布让 buffer 跌入红色（断更风险）→ 高亮警告"今天必须再拍 ≥1 条"。
 
 ## Key Rules
 
-1. **不动预测段**。即使是修复笔误，也不允许在 publish 时改预测段
-2. **不抓数据**。publish 是登记动作，不是数据回收（那是 cheat-retro 的活）
-3. **state 字段名固定**。`pending_retros` / `last_published_at` 是其他子 skill（特别是 cheat-status / cheat-retro）依赖的契约
-4. **平台未知不强报**。无法识别 → 询问用户，允许 `platform: other` 作为兜底
-5. **重复登记需明示**。已有 published_at → 询问"覆盖？"，绝不静默覆盖
+1. 不动预测段
+2. 不抓、不看、不打印任何数字——发布登记是元数据动作，数据回收是 cheatx-retro 的事
+3. state 字段名固定：`pending_retros` / `recent_publishes` / `last_published_at` 是其他 skill 的契约
+4. 重复登记要明示
 
 ## Refusals
 
-- 「我顺手把预测段也改一下」 → 拒绝。请走 `_redo.md` 路径
-- 「URL 我等会儿补，先把发布时间记上」 → 允许：URL 字段可后续追加；published_at + platform 必填
-- 「跳过 metadata 更新，直接清 in_progress_session」 → 拒绝。元数据是复盘时的关键上下文（特别是 platform 决定数据回收用哪个 adapter）
+- 「顺手把预测段也改一下」 → 拒绝，走 `_redo`
+- 「顺便看看现在多少浏览了」 → 拒绝。复盘窗口没到，看了就不盲了
+- 「链接等会儿补，先记发布时间」 → 允许：`URL` 和 `Status ID` 标 `pending`，复盘前必须补上
+- 「跳过 header，直接出队」 → 拒绝。status id 是复盘取数的钥匙
 
 ## Integration
 
-- 上游：`/cheat-predict`（写出 prediction 文件并设 in_progress_session）
-- 下游：T+RETRO_WINDOW_DAYS 后 → `/cheat-retro`
-- `cheat-status` 用 `pending_retros` 字段计算"今天该复盘哪些"
-- 平台字段被 `cheat-retro` 用来路由到对应的 perf-data adapter（manual-paste / youtube-data-api / 等）
+- 上游：`/cheatx-predict` → `/cheatx-queue`
+- 下游：到 `due_at` 后 `/cheatx-retro`
+- `/cheatx-status` 和 SessionStart hook 用 `pending_retros[].due_at` 显示到期复盘，用 `recent_publishes` 显示今日条数

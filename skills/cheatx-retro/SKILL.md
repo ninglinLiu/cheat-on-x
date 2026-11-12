@@ -1,379 +1,248 @@
 ---
-name: cheat-retro
-description: T+N 天数据回收 + 复盘 + 把实绩观察写入 rubric-memo.md。这是校准循环的反馈环节——不复盘的预测等于占星。触发词："复盘 [path]"/"retro this"/"T+3d 数据来了"/"抓数据 [path]"/"把这篇复盘了"。
-argument-hint: <prediction-file> [— window: 3|5|7] [— source: manual|adapter]
+name: cheatx-retro
+description: T+48h（长帖 / Article T+7d）数据回收 + 复盘：拿到实际数据 → 对照预测 → 提炼观察写进 rubric-memo.md → 重算该形态基线 → 判断要不要提议 bump。支持单条和批量（"复盘到期的 <csv>" 一次处理所有到期帖子）。数据来源：油猴脚本 / X Analytics 导出的 CSV（默认）、X API（可选）、手动粘贴。只追加 `## 复盘` 段，绝不改预测段。触发词："复盘 [path]"/"复盘到期的 [csv]"/"retro"/"48 小时到了"/"把这几条复盘了"。
+argument-hint: <prediction-file | posts/<id>/ | due> [<csv>...] [— source: csv|x-api|manual] [— early]
 allowed-tools: Bash(*), Read, Edit, Write, Glob, Grep, Skill
 ---
 
-# /cheat-retro — 数据回收与复盘
+# /cheatx-retro — 数据回收与复盘
 
-抓 T+N 天的实际表现 → 对比预测 → 提炼新观察 → 写入 rubric-memo.md。**只追加 `## 复盘` 段，绝不改预测段**。`rubric_notes.md` 是 blind 白名单，只能保存通用公式、维度定义和抽象规则，不能写入样本名、实绩、评论、链接或播放/阅读数。
+拿实际表现 → 对照预测 → 提炼观察 → 写入 `rubric-memo.md`。**只追加 `## 复盘` 段，绝不改预测段**。
+
+`rubric_notes.md` 是 blind 白名单：复盘**不往里写任何东西**。样本名、数字、回复、链接全部进 `rubric-memo.md`。
 
 ## Overview
 
 ```
-[用户：复盘 predictions/2026-05-04_...]
+[复盘 predictions/… | 复盘到期的 imports/x.csv]
   ↓
-[Phase 0: 校验 immutability + 校验时间窗口]
-  ↓
-[Phase 1: 抓数据（manual paste 或 adapter）]
-  ↓
-[Phase 2: 写实绩段 + top 评论关键词]
-  ↓
-[Phase 3: 验证/推翻预测的各假设]
-  ↓
-[Phase 4: 提炼新观察]
-  ↓
-[Phase 5: 落盘（追加到 ## 复盘 段）]
-  ↓
-[Phase 6: 写入 rubric-memo.md 的"观察记录"段]
-  ↓
-[Phase 7: 检测是否触发 bump 候选 → 提示用户跑 /cheat-bump]
+Phase 0 校验：预测段 cache、已登记发布、窗口到了没
+Phase 1 取数：csv（默认）/ x-api / manual → posts/<id>/report.md
+Phase 2 实际数据 + 派生比率 + log score + 外生冲击判断
+Phase 3 回复与引用聚类
+Phase 4 验证 / 推翻
+Phase 5 新观察（rubric-memo / post_patterns）
+Phase 6 追加 ## 复盘 段 + 哈希复核
+Phase 7 写 rubric-memo.md（+ 用户确认后写 post_patterns.md）
+Phase 8 重算基线 + 偏差累计 + 是否提议 bump + state
 ```
 
 ## Constants
 
-- **RETRO_WINDOW_DAYS = 3** — 默认 T+3d。短视频快平台可设 1，长文设 7
-- **DATA_SOURCE = manual** — manual: 用户粘数字；adapter: 调对应平台 adapter（需配置）
-- **AUTO_PROPOSE_BUMP = true** — Claude 判断是否系统性偏差时自动提议 /cheat-bump
-  - **默认参考**：连续 ≥3 次同向偏差（high/low）→ 提议
-  - **但 Claude 可以更早提议**：1 次极端偏差（如中枢 50w 实绩 5w 这种 ≥10x），即使没有"连续"也提议
-  - **也可以更晚**：3 次同向但每次偏差都很小（<25%），可能只是噪声不是系统性
-- **TOP_COMMENTS_N = 20** — 抓 / 粘 top N 高赞评论
-
-> 💡 调用时覆盖：`/cheat-retro <file> — window: 7 — source: adapter`
+- **RETRO_WINDOW_HOURS** = `state.retro_window_hours`（默认 48）；`long` / `article` 用 `retro_window_hours_longform`（默认 168）
+- **MIN_REPLIES = 10**——回复样本低于这个数，复盘照做但"回复与引用"一节标"样本不足"
+- **ON_TARGET_BAND = 0.5 – 2×**（实际 / 中枢）；**EXTREME** = ≤ 0.2× 或 ≥ 5×
+- **AUTO_PROPOSE_BUMP = true**——判断规则见 Phase 8
 
 ## Inputs
 
-| 必填 | 来源 |
+| 形态 | 处理 |
 |---|---|
-| `<prediction-file>` 或 `<video-folder>` | 用户参数；缺失则从 `.cheat-state.json` 的 `pending_retros[0]` |
-| `rubric_notes.md` | 用户项目根（只读，用于当前规则上下文；不得写入实绩观察） |
-| `rubric-memo.md` | 用户项目根（写入复盘观察、实绩证据、样本名与评论信号） |
-| `.cheat-state.json` | 状态文件 |
-
-### 入参解析（同 cheat-predict 双形态接受）
-
-用户给的可能是：
-- **`predictions/2026-05-04_<id>_<short>.md`** → 直接用这个 prediction 文件
-- **`videos/2026-05-04_<id>_<short>/`** → 找对应的 prediction 文件（按 id 匹配）+ 把 report.md 写到该 video folder 里
-- 缺省 → 从 `pending_retros[0]` 取最早的
+| `predictions/<…>.md` | 单条 |
+| `posts/<…>/` | 按同名找预测文件 |
+| `due` / `复盘到期的` + CSV 文件 | 批量：`state.pending_retros` 里所有 `due_at` 已过的 |
+| 缺省 | 列出到期的，问用户要哪条、数据从哪来 |
 
 ## Workflow
 
-### Phase 0: 校验
+### Phase 0：校验（每条）
 
-1. 读 `<prediction-file>`，确认存在
-2. **识别有效预测段**：扫所有 `## 预测...` 段（可能含 `## 预测`、`## 预测 v1`、`## 预测 v2` 等）：
-   - 取**最后一个**`## 预测 vN` 作为本次校准的依据（v2 存在则用 v2；只有 v1 则用 v1；legacy 单段 `## 预测` 直接用）
-   - state.shoots 对应项的 `v2_prediction_written` 应与"是否存在 v2 段"一致——不一致则警告（state 与文件脱节）
-3. **校验 immutability**：在内存 cache 住所有 `## 预测...` 段的内容（用于 Phase 5 后核对——**全部段不可改**，不只是有效段）
-4. 校验文件 header 有 `Published at` → 没登记的不能复盘，提示用户先 `/cheat-publish`
-5. 校验时间窗口：今天 - published_at >= RETRO_WINDOW_DAYS。不够 → 提示"还差 X 天"，询问用户是否仍坚持复盘（标 `early_retro: true`）
-6. 校验已有复盘段是否已填——已填则询问"是补充还是修正？"
-   - 补充 → 在已有复盘段下追加新子段，标日期
-   - 修正预测段（用户错觉）→ 拒绝
+1. 预测文件存在；识别所有 `## 预测…` 段，**最后一个 `## 预测 vN` 是有效预测**
+2. **在内存里 cache 所有 `## 预测…` 段的合并内容**（Phase 6 复核用）
+3. header 有 `Published at` 和 `Status ID` → 没有就提示先 `/cheatx-publish`
+4. 窗口：现在 − 发布时间 ≥ 对应窗口？
+   - 不够 → "还差 N 小时。坚持现在复盘会标 `early_retro: true`，bump 时权重减半"
+5. 已有复盘内容 → 问"补充还是修正？"（补充：追加带日期的子段；修正预测段：拒绝）
+6. header 有 `Reconstructed retrospective` → 可以复盘，但**不计入** calibration_samples
 
-### Phase 1: 抓数据
+### Phase 1：取数
 
-按 `state.data_collection` 字段分两条路径——抓回数据后**写到 video folder 的 `report.md`**（如果 prediction 关联 video folder），同时解析摘要 inline 到 prediction 的复盘段。
+`state.data_collection` 决定默认路线；用户可以 `— source:` 覆盖。
 
-#### Path A：`DATA_SOURCE=manual`（候补方案）
+#### Route A：CSV（默认）
 
-- 询问用户："粘贴这条作品的当前数据：播放 / 点赞 / 评论 / 转发 / 收藏（顺序无所谓，能识别就行）"
-- 用户粘 → 解析提取数字
-- **强制要求 top 评论**：让用户从平台后台或直接打开评论区贴 TOP_COMMENTS_N 条到对话里（每条带赞数）
-  - 用户拒绝 / 给少于 5 条 → **拒绝继续**："评论才是真信号——'她不一样'这种模因爆发只能从评论看出。
-    没评论的复盘 = 看体温计判断病情。粘 top 20 给我。如果实在拿不到，告诉我原因（比如评论被关了），我帮你标 `comments_unavailable`，但这次复盘价值打折。"
-- 把粘的原始数据写到 `videos/<...>/report.md`（如有 video folder）
-
-#### Path B：`DATA_SOURCE=adapter`
-
-按 prediction header 的 `Platform` 字段 + state 的 `enabled_perf_adapters` 决定调哪个：
-
-| Platform | Adapter | 调用方式 |
-|---|---|---|
-| `douyin` | `adapters/perf-data/douyin-session/` | `bash <adapters-dir>/douyin-session/run.sh <aweme_id> <video_folder>` |
-| `xhs` | `adapters/perf-data/xhs-explore/` | `bash <adapters-dir>/xhs-explore/run.sh <note_id> <video_folder>` |
-| `linkedin` | `adapters/perf-data/linkedin-session/` | `bash <adapters-dir>/linkedin-session/run.sh <activity_id> <video_folder>` |
-| `wechat_channels` | `adapters/perf-data/wechat-channels/` | `bash <adapters-dir>/wechat-channels/run.sh <post_id> <video_folder>` |
-| `youtube` | `adapters/perf-data/youtube-data-api/`（planned — batch 3, not yet available） | 调 YouTube Data API（需 API key） |
-| `bilibili` | `adapters/perf-data/bilibili-stat/` | `bash <adapters-dir>/bilibili-stat/run.sh <bvid> <video_folder>` |
-| 其他 | 无 adapter | 优雅降级到 Path A |
-
-> `<adapters-dir>` = 克隆源码处的 `cheat-on-content/adapters/perf-data/`（install.sh **不**复制 adapter 到 ~/.claude/skills，只复制 15 个 skill）。定位：`find ~ -path '*/cheat-on-content/adapters/perf-data' -type d | head -1`。
-
-**douyin-session 的特殊处理**：
-- 视频 URL（如 `https://v.douyin.com/abc123`）→ 短链解析 → 提取 aweme_id
-- 调用前确认 cookie 文件存在（adapter 会找 `.auth/`）；不存在则提示用户先跑 `python <adapter>/crawler.py login`
-- adapter 输出在 `<video_folder>/report.md`（adapter 的 renderer.py 已经按这个格式写）
-- cheat-retro 读这个 report.md 解析关键数据 → 摘要写入 prediction 的复盘段
-
-**xhs-explore 的特殊处理**：
-- 笔记 URL（`https://www.xiaohongshu.com/explore/<note_id>?xsec_token=...` 或 `https://xhslink.com/xxx`）→ 提取 note_id
-- 调用前确认 cookie 存在（adapter 找 `.auth-xhs/`）；不存在则提示先跑 `python <adapter>/crawler.py login`
-- 字段已校准（观看 `view_count` 等已写死）；万一接口改版导致某项为 0，看 report.md 末尾 galaxy 原始 JSON，把新 key 加进 `crawler.py` 的 `_normalize_note`
-- **评论可能抓不到**（xsec_token 缺失 / 评论关闭）→ report.md 标"未抓到评论" → 此时**降级要求用户 manual 粘 top 20 评论**（评论是真信号，不能省）
-
-**linkedin-session 的特殊处理**：
-- 帖子 URL（`https://www.linkedin.com/feed/update/urn:li:activity:<id>/`）或裸 activity_id → adapter 自动提取 activity_id
-- 调用前确认 cookie 存在（adapter 找 `.auth-linkedin/`）；不存在则提示先跑 `python <adapter>/crawler.py login`
-- **只能抓你本人发的帖子**（LinkedIn 单帖分析仅作者可见）；LinkedIn 界面 日/英 随机切换，`extract.py` 的 `POST_METRICS` 已存双语标签，万一某项为 None 看 `.cheat-cache/linkedin-session-debug/post_<id>.txt` 把新标签补进去
-- **评论只给数、不给正文**（分析页限制）→ report.md 标注 → **降级要求用户 manual 粘 top 评论**（评论是真信号，不能省）
-
-**wechat-channels 的特殊处理**：
-- 仅抓用户自己登录后可见的视频号助手后台数据；调用前确认内容项目存在 `.auth-wechat-channels/`
-- 不存在登录态时，提示先运行 `python <adapter>/review.py login` 并扫码；登录态只保存在内容项目本地
-- adapter 输出 `report.md`，但不落盘原始响应、请求体、完整后台 URL、后台截图、页面文本、评论者昵称或内部用户 ID
-- 找不到目标作品或 adapter 失败时，非 0 退出并降级 manual；不得把旧 report.md 当作本次成功
-
-**bilibili-stat 的特殊处理**：
-- 视频 URL（`https://www.bilibili.com/video/<BV号>` 或 b23.tv 短链）或直接给 BV 号 → adapter 自动提取 BV 号
-- **无需登录**：B站视频数据(view)与评论(reply)都是公开接口、免 wbi 签名，adapter 是纯 httpx，没有 `crawler.py login` 步骤、不碰 `.auth/`
-- 依赖 httpx：首次用 `pip install -r <adapter>/requirements.txt`
-- 评论按热度（sort=2）抓取；B站老接口主楼评论可能偏少，不足时降级 manual 粘
-
-**任何 adapter 失败**（cookie 过期 / 接口变化 / 网络）→ **优雅降级到 manual**，提示用户："adapter 调用失败，原因 [X]。改用 manual 模式——粘下面的数据"。**不阻塞流程**。
-
-#### 共同输出
-
-不管 Path A 还是 B，最终：
-- `videos/<...>/report.md` 含完整原始数据（数字 + top 评论）
-- prediction 文件复盘段含**摘要**（关键比率 + 评论关键词聚类 + 验证/推翻判定）
-- report.md 是数据真相，prediction 复盘段是判断真相
-
-### Phase 2: 写实绩段 + top 评论分析
-
-**实绩数据格式**（参考 [prediction-anatomy.md](../../shared-references/prediction-anatomy.md) 的复盘段格式）：
-
-```markdown
-### 实绩数据
-- 播放：71.1w（落在 `30-100w` 桶内偏高，相对中枢 50w **+42%**）
-- 点赞：2.4w（赞播比 3.38%）
-- 评论：899（评播比 0.126%）
-- 收藏：5251
-- 分享：1.8w（分播比 2.53%，强）
-```
-
-数据点之间的派生比率（赞播比、评播比、分播比）必须算出来——它们是单纯播放数无法暴露的信号。
-
-**top 评论关键词聚类**：
-- 把粘进来的 N 条评论分 3-5 类（高赞模因 / 概念引用 / 离题噪声 / 转发暴露暗示 / @朋友传播 等）
-- 每类列代表性评论（带赞数）
-- 报告比例（"22% 是模因复用、35% 是概念引用、5% 是离题"）
-
-### Phase 3: 验证/推翻
-
-对 prediction 文件里的每一项（推理因素表、关键校准假设、反事实场景），逐项判定：
-
-```markdown
-### 哪些预测被验证 ✅ / 推翻 ❌
-
-**验证 ✅**:
-- 关键校准假设完全成立：本篇 71.1w / 谁问你了 11.7w = 6.07x，远超我押的 1.5-2x
-- ER=5 主导情感传播力 → H1 强证据
-- HP=5 验证：分播比 2.53% 与"金句被高频引用"匹配
-
-**推翻 ❌**:
-- 中枢 50w 被超出 +42%
-- 反事实推理里"必须搭配强社会议题才能破 30w" 完全错误
-- SR 押注（"H2 SR 应上调"）反向被推翻：SR 在情感向场景几乎不贡献
-```
-
-**关键纪律**：
-- 每条验证 / 推翻必须引用具体数据（"分播比 2.53%"），不许写"基本符合"这种含糊措辞
-- 反事实的"如果落在 X bucket 意味着什么"——实际落在的那个 bucket 直接告诉你哪个 rubric 假设被测试了，明确写出来
-
-### Phase 4: 提炼新观察（**两类，分别写入两个文件**）
-
-#### 4a. Rubric 观察（写入 rubric-memo.md）
-
-打分维度 / 公式 / bucket 边界相关的观察：
-
-```markdown
-### 需要写进 rubric-memo.md 的新观察
-
-1. **ER 在情感向场景的真实权重应 ≥ ×2.0**：与谁问你了 6x 流量比是 v2 rubric 最强的反事实证据
-2. **议题分享冲动 (TS) 是隐藏维度**：joker / "她不一样" / 滤镜重构提供了安全的自嘲身份，转发不暴露处境，TS=5 的样本
-3. ……
-```
-
-每条观察必须可追溯到具体数据点（不写"情感很重要"——写"ER5/SR2 vs ER3/SR4 同 composite 下流量差 6x"）。
-
-#### 4b. 写作 Pattern 观察（写入 script_patterns.md）
-
-Diff `scripts/<id>.md`（pre-shoot 草稿，可能是 cheat-seed 写或用户写）vs `videos/<id>/script.md`（实际拍摄稿——cheat-shoot 时用户提供的版本），找出**改动且对流量有明显影响**的部分：
-
-| 用户做了什么 | 流量影响 | 是否提议追加 pattern |
-|---|---|---|
-| 砍掉某段 | 实绩 ≥ 中枢 → "砍掉没伤流量"——验证那段冗余 | 是，加到 script_patterns.md "用户改稿历史观察"表 |
-| 加了某句 / 互动钩子 | 实绩超中枢 → 可能是新 pattern | 是，候选 Pattern N，标 ≥1 样本待验证 |
-| 改了风格（如开头软化） | 高于同类样本 → 风格改动有效 | 是，候选 Pattern N |
-| 没动结构 / 改动与流量无关 | — | 不追加 |
-
-输出格式：
-
-```markdown
-### 需要写进 script_patterns.md 的新 pattern 候选
-
-1. **用户改稿模式**: 砍掉 [X 段] / 加了 [Y]
-   - 流量影响：实绩 [N] vs 中枢 [M]，[偏差 / 命中]
-   - 建议：追加到 script_patterns.md 的"用户改稿历史观察"表
-
-2. **新 pattern 候选 N**：[一句话描述]
-   - 单样本支持
-   - 触发条件：[何时该用]
-   - 建议：追加到 script_patterns.md 末尾的"新发现的 Pattern"段，标 ≥1 样本待验证
-```
-
-询问用户："要把这些追加到 script_patterns.md 吗？(yes / no / 选择哪几条)"。**用户确认后才追加**——避免把单点观察直接写成正式 pattern。
-
-> **rubric 进化 ≠ 写作进化**——两者解耦：
-> - rubric_notes.md 学的是"哪些维度真的预测流量"
-> - script_patterns.md 学的是"什么写法真的能起作用"
-> 可能有交叉（如 MS 维度与"互动钩子" pattern），但记录在两个文件里是因为**作用域不同**——rubric 改了影响所有未来打分，pattern 改了影响所有未来 draft。
-
-如果 `videos/<id>/script.md` **缺失**（cheat-shoot 时用户标 `script_lost`） → 跳过 4b，没法 diff。
-如果 `script_consistency = "consistent"`（用户拍时没改稿）→ 4b 仍然有意义（diff 也许是空），但可以快速跳过细查。
-如果 `script_consistency = "modified"`（用户拍时改了）→ **4b 是核心**，重点学这次改动 → 流量影响。
-
-### Phase 5: 落盘到 ## 复盘 段
-
-用 Edit 工具，**仅追加**到现有 `## 复盘` 段（如有占位 `（待填）` 行先删除）：
-
-```markdown
-## 复盘
-
-**复盘时间**: 2026-05-07（发布 T+3d）
-**抓取时间**: 2026-05-07 09:30
-**数据来源**: manual paste
-
-### 实绩数据
-[Phase 2 内容]
-
-### Top 评论关键词
-[Phase 2 内容]
-
-### 哪些预测被验证 / 推翻
-[Phase 3 内容]
-
-### 需要写进 rubric-memo.md 的新观察
-[Phase 4 内容]
-```
-
-**写完后再次校验**：读取保存后的文件，对比**所有** `## 预测...` 段（v1 / v2 / legacy）的合并哈希应等于 Phase 0 cache 的合并哈希。**任一段被改 → 报错并回滚**。
-
-### Phase 6: 写入 rubric-memo.md + script_patterns.md
-
-#### 6a. rubric-memo.md（Phase 4a 的输出）
-
-按 [observation-lifecycle.md](../../shared-references/observation-lifecycle.md) 的 blind leak guard，追加到 `rubric-memo.md` 的 `## 观察记录` 段。这里可以包含真实样本名、实绩数据、评论关键词和链接；这些内容**绝不**写入 `rubric_notes.md`：
-
-```markdown
-### YYYY-MM-DD [标题简称] (id) — [一句话定性]
-- 预测：composite=X.XX，bucket=Y
-- 实绩：播放 / 点赞 / 评论 / 转发（带 T+Nd 标注）
-- Top 评论关键词：[简短摘录 + 赞数]
-- 判断：哪个维度被验证/推翻？为什么？
-- Rubric 调整：[如果有，写明 "下次打 XX 类文章时改 YY"]
-- 详见：[predictions/<file>.md]
-```
-
-**检测跨样本 pattern**：扫描 `rubric-memo.md` 已有"观察记录"，看新观察是否与某条已有观察形成 ≥2 样本支持。命中则在 `rubric-memo.md` 升级到"重大跨样本观察"段。只有在后续 `/cheat-bump` 落地时，才把已验证的规律抽象成通用语言写入 `rubric_notes.md`。
-
-#### 6b. script_patterns.md（Phase 4b 的输出，**用户确认后才写**）
-
-如 Phase 4b 用户回 "yes" 或选择性确认了某几条：
-- "用户改稿模式" → 追加到 script_patterns.md 的"用户改稿历史观察"表
-- "新 pattern 候选 N" → 追加到末尾"新发现的 Pattern"段，**显式标 ≥1 样本待验证**
-
-新 pattern 候选的格式（同 [script_patterns.template.md](../../templates/script_patterns.template.md) 的 Pattern 11/12 示例）：
-
-```markdown
-### Pattern N（来自 [视频简称]，单样本待验证）
-
-**现象**：[Phase 4b 描述]
-
-**原理**：[为什么有效——基于这一次观察的猜测]
-
-**触发条件**：[何时该用]
-
-**待验证**：需要 ≥2 样本支持才能升正式 pattern。
-```
-
-跨样本 pattern 升正式：扫描"新发现的 Pattern"段，看是否有 ≥2 样本支持同一现象 → 升到核心 pattern 库 + 删 "待验证" 标记。
-
-如用户在 Phase 4b 全否（"no"）→ 跳过 6b，rubric-memo.md 仍照写。
-
-### Phase 7: 检测 bump 触发
-
-读 `.cheat-state.json` 的 `consecutive_directional_errors` 字段，按本次复盘判定向更新：
-- 本次预测高估（实绩 < 中枢 -25%） → push `["high"]` + 记录 deviation_magnitude（如 0.5x / 0.3x）
-- 本次预测低估（实绩 > 中枢 +25%） → push `["low"]` + 记录 deviation_magnitude
-- 在 ±25% 内 → 不 push
-
-**Claude 判断是否提议 bump**（不是固定门槛）：
+用户在 x.com 用油猴脚本导出（或 X Analytics 导出）放进 `imports/`。还没导出就先给步骤：
 
 ```
-判断维度：
-1. 连续同向次数（参考默认：≥3）
-2. 单次偏差幅度（参考默认：>2x 或 <0.5x 算极端）
-3. 偏差是否能解释为单一维度漏判（如 ER 或 SR 一致偏离）
-4. 用户是否在复盘里反复提到同一现象
-
-任一足够强 → 提议 bump：
-- 3 次连续同向，每次都中等偏差 → 提议
-- 1 次极端偏差（如 ≥10x），即使没连续 → 提议（"一次性强信号"）
-- 2 次同向 + 评论区出现一致的反向证据 → 提议（"评论 + 数据双信号"）
-
-不提议的情况：
-- 3 次同向但每次都很小（<25%）→ 可能只是噪声
-- 偏差跨多个维度无清晰方向 → bump 不知道改什么
+1. 在 x.com 打开你的主页，往下滚过要复盘的这几条
+2. 想要回复：点进每条帖子，把回复区滚一遍（每条至少要 10 条回复才有分析价值）
+3. 可选：帖子 → 查看帖子分析 → 面板"读取本页分析数据（实验）"——补主页访问 / 新增关注
+4. 面板点"导出：我的帖子 + 回复/引用"，文件放进 imports/
 ```
 
-提议时输出：
+批量：
 
-```
-🚨 检测到 [系统性偏差信号] / [极端单点偏差] 。
-
-[简短描述：连续 N 次 / 1 次极端 / 评论双信号 等]
-
-这可能是 rubric 系统性偏差的信号。建议：
-- 跑 /cheat-bump 看是否需要升级公式
-- 或先看 /cheat-status 详细分析
-
-注：本次提议是 [default-aligned: 满足 ≥3 同向] / [judgment-driven: 1 次 10x 强偏差]
+```bash
+python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py due imports/<file>.csv [更多文件…] --project . --label csv:userscript
 ```
 
-更新 state file：
-```json
-{
-  "calibration_samples": <+1>,
-  "pending_retros": [<剔除本次>],
-  "last_retro_at": "<ISO>",
-  "consecutive_directional_errors": [...]
-}
+单条：
+
+```bash
+python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py post imports/<file>.csv \
+  --id <status_id> --out posts/<…>/ --published-at <Published at> --final posts/<…>/final.md \
+  --window-hours 48 --form <form> --label csv:userscript
 ```
+
+- 第一次用某个非油猴导出的文件 → 先 `inspect` 看列映射，必要时 `--map`
+- 输出 JSON 里 `found: false` → 告诉用户哪条没在导出里，怎么补
+- `early_snapshot: true` → 快照早于窗口，复盘段注明
+- 导入器只打印**到期**帖子的数字——不要自己打开 CSV 去读其他行
+
+`<cheat-on-x>` 是源码克隆位置：`readlink -f ~/.claude/skills/cheatx-retro` 往上两级；找不到就问用户。
+
+#### Route B：X API（可选）
+
+```bash
+python <cheat-on-x>/adapters/perf-data/x-api/xapi.py due --project . --replies 20         # 预演：看费用
+python <cheat-on-x>/adapters/perf-data/x-api/xapi.py due --project . --replies 20 --yes   # 用户确认后
+```
+
+**先跑预演，把预估费用告诉用户，用户同意才加 `--yes`。**`state.x_api.budget_usd_per_month` 有值时，超预算先问。API 拿不到新增关注，回复只覆盖近 7 天。
+
+#### Route C：手动粘贴
+
+请用户粘：曝光、赞、转发、引用、回复数、收藏（有的话：主页访问、新增关注、链接点击），以及**至少 10 条回复（带赞数）**。写成 `posts/<…>/report.md`（格式同导入器输出），`数据来源: manual paste`。
+
+用户拒绝给回复或少于 5 条 → 先问原因。确实拿不到（回复关闭 / 太少）→ 标 `replies_unavailable`，复盘价值打折，但继续。
+
+#### 任何路线失败
+
+CSV 里没有这条 / API 报错 / 限流 → 告诉用户原因，降级到下一条路线。**不阻塞**。
+
+### Phase 2：实际数据
+
+从 report.md 读数字，写进复盘段（格式见 [templates/retro.template.md](../../templates/retro.template.md)）：
+
+- 曝光 → 落在哪个 bucket（用预测 header 的 Baseline 换算）；**实际 / 中枢**
+- **实际 bucket 的预测概率** + log score（`ln(p)`）——长期平均 log score 是概率校准的指标
+- 赞 / 转 / 引用 / 回复 / 收藏；有就写主页访问、新增关注、链接点击
+- 派生比率（导入器已算好）：互动率、收藏/赞比、回复率、转引率、主页访问率、每千曝光新增关注
+- 次要押注逐项 ✅ / ❌
+- **外生冲击判断**：回复 / 引用里出现粉丝量级远大于你的账号的转发或引用、或用户说"被 @xxx 转了"、或曝光是同形态基线的 10× 以上且转引率异常 → 问用户确认。确认 → 标 `exogenous_boost`，这条**不计入**连续偏差，bump 时排除
+- 发出文本一致性：header 里 `Posted Text Check` 是 `unchecked` 且 report.md 有发出正文 → 现在用 `tools/posted_text_check.py` 补查；≥ 30% → Integrity warning
+
+### Phase 3：回复与引用
+
+从 report.md 的回复 / 引用列表聚类成 3-5 类，例如：
+
+| 类别 | 对应维度 |
+|---|---|
+| 补充（"还可以加……"） | RP 的健康形态 |
+| 求资源 / 求模板 | SV |
+| 共鸣 / 身份认同（"说的就是我"） | RS |
+| 反对 / 纠错 | RP（可能也是 NR） |
+| @朋友 | SV（私信 / 转发给具体的人） |
+| 问"你是做什么的" | FT |
+| 离题 / 刷屏 | NR 信号 |
+
+每类：条数占比 + 一条代表性回复（带赞数，**不写回复者 handle**）。
+
+### Phase 4：验证 / 推翻
+
+逐项对照预测文件：
+- 推理因素表：每个"高置信度"因素被验证还是推翻
+- 反事实：实际落中的那个场景，它写的"意味着什么"成立吗
+- 关键校准假设：算实际倍数比，和押的比
+- 中枢偏差：实际 / 中枢 落在 0.5–2× 之外就明写
+
+每条引用具体数字。不许写"基本符合"。
+
+### Phase 5：新观察
+
+#### 5a rubric 观察（→ rubric-memo.md）
+
+维度 / 权重 / bucket / 协变量相关，每条可追溯到数据点。例：
+- "SV=5 的两条清单 thread 实际 / 中枢都 ≥ 2.5×，收藏/赞比 > 0.5——SV 可能被低估"
+- "距上一条 < 60 分钟的三条全部落在持平以下"（协变量信号，不是维度信号）
+
+#### 5b 写法观察（→ post_patterns.md，**用户确认后才写**）
+
+对比 `drafts/<id>.md` → `posts/<id>/final.md` → 实际发出正文：用户改了什么、效果如何。新 pattern 标"单样本待验证"。
+
+问用户："要把这些追加到 post_patterns.md 吗？（全部 / 选几条 / 不要）"
+
+### Phase 6：追加复盘段
+
+用 Edit，在 `## 复盘` 下追加（有占位"（待填……）"先删掉占位行）。批量时每条各自 Edit 自己的文件。
+
+**写完立刻复核**：重新读文件，所有 `## 预测…` 段合并内容必须等于 Phase 0 的 cache。不等 → 报错、回滚这次编辑、告诉用户。
+
+### Phase 7：写 rubric-memo.md
+
+按 [observation-lifecycle.md](../../shared-references/observation-lifecycle.md) 的模板追加到 `rubric-memo.md` 的 `## 观察记录`。批量复盘可以合成一张表。
+
+然后扫已有观察：新观察和已有观察是否构成同一 pattern ≥ 3 条（外生 / integrity 样本不算）→ 升格到 `## 重大跨样本观察`。
+
+**不写 `rubric_notes.md`**。规律要等 `/cheatx-bump` 落地时抽象化后才进去。
+
+### Phase 8：基线、偏差、bump 提议、state
+
+1. **重算基线**：
+
+   ```bash
+   python <cheat-on-x>/tools/calib_pool.py baseline predictions/ --json
+   ```
+
+   输出每个形态最近 10 条已复盘样本的曝光中位数（排除 reconstructed / integrity / exogenous）。写回 `state.baseline_impressions` + `baseline_updated_at`；变化超过 30% 的形态，在 `rubric-memo.md` 的"基线 / bucket 重算记录"追加一行。
+
+2. **偏差方向**（外生样本跳过）：
+   - 实际 / 中枢 < 0.5 → push `{"dir": "high", "ratio": …, "file": …}`
+   - > 2 → push `{"dir": "low", …}`
+   - 0.5–2 → 不 push；**并清空**累计（连续性被打断）
+
+3. **是否提议 bump**（Claude 判断，默认参考）：
+   - 连续 ≥ 4 次同向 → 提议
+   - 1 次极端（≤ 0.2× 或 ≥ 5×）且不是外生、能解释为某个维度漏判 → 提议
+   - 同向但每次都只是略出带外 → 先查协变量（时段 / 间隔 / Premium / 外链），可能不是 rubric 的问题
+   - 偏差跨多个维度、没有清晰方向 → 不提议
+
+   ```
+   🚨 [连续 4 次低估 / 1 次 8× 极端低估]
+   可能是 rubric 系统性偏差。建议跑 /cheatx-bump，或先 /cheatx-status 看详情。
+   本次提议是 default-aligned / judgment-driven。
+   ```
+
+4. **state**：
+   ```json
+   {
+     "calibration_samples": "+1（reconstructed 不加）",
+     "pending_retros": "[移除本条]",
+     "last_retro_at": "<ISO>",
+     "consecutive_directional_errors": "[…]",
+     "baseline_impressions": "{…}",
+     "baseline_updated_at": "<ISO>"
+   }
+   ```
+
+5. 批量结束输出一张总表：
+
+   ```
+   | 帖子 | 形态 | 预测 | 实际 | 实际/中枢 | log score | 备注 |
+   ```
+
+   + 累计校准样本、当前 confidence、平均 log score（最近 20 条）、是否提议 bump。
 
 ## Key Rules
 
-1. **预测段 immutable**。Phase 0 cache + Phase 5 校验是双保险。任何 hash 不一致 → 报错回滚
-2. **数据来源必须标注**。`数据来源: manual paste` 或 `数据来源: adapter:douyin-session` 写进复盘段
-3. **观察可追溯**。每条新观察引用具体数据点
-4. **不在复盘里 bump**。Phase 7 只**提议** bump，实际升级走 `/cheat-bump`——避免一次操作做两件事
-5. **早复盘标记**。RETRO_WINDOW_DAYS 不到就复盘 → state file 记 `early_retro: true`，bump 时这种样本权重降级
+1. 预测段 immutable：Phase 0 cache + Phase 6 复核双保险
+2. 数据来源必须写明（`csv:userscript（文件名）` / `x-api` / `manual paste`）
+3. 每条观察可追溯到数字
+4. 复盘里不 bump——只提议，执行走 `/cheatx-bump`
+5. 早复盘标 `early_retro: true`
+6. 不往 `rubric_notes.md` 写任何东西
+7. report.md 不写回复者 handle
 
 ## Refusals
 
-- 「这条数据已经看过了，但你假装没看，按预测时的盲度做复盘」 → 复盘本来就是看完数据再做的；这个表述本身没有违规，但要确认用户没在 prediction 写之前透露过数据
-- 「把预测段的概率分布改一下，让复盘看起来更准」 → 拒绝。原则 #1
-- 「跳过观察提炼，直接结束」 → 拒绝。新观察是 rubric 进化的唯一燃料；缺它复盘退化为"看一眼"
-- 「直接 bump，不要单独走 /cheat-bump」 → 拒绝。bump 流程有完整的跨模型审 + cleanup pass，retro 是触发器不是执行器
+- 「把预测段的概率改一下让复盘好看点」 → 拒绝
+- 「跳过观察提炼」 → 拒绝。观察是 rubric 进化的唯一燃料
+- 「不要回复了，只看数字」 → 先劝；坚持则标 `replies_unavailable`，复盘价值打折
+- 「顺便把还没到期的那几条也看一眼」 → 拒绝。它们的窗口没到，看了就不盲——除非用户明确要 `— early` 并接受降权
+- 「直接 bump」 → 拒绝，走 `/cheatx-bump`
 
 ## Integration
 
-- 前置：`/cheat-publish` 已登记 + 时间窗口达到
-- 下游：累计 `consecutive_directional_errors` 满 3 → 触发 `/cheat-bump` 提议
-- 状态字段更新：`calibration_samples` +1（这是 cheat-status 显示进度的关键）
-- pending_retros：剔除本条
-- 与 [observation-lifecycle.md](../../shared-references/observation-lifecycle.md) 紧耦合：每次复盘是观察新增的入口
+- 前置：`/cheatx-publish` 已登记 + 窗口已到
+- 下游：偏差累计 → `/cheatx-bump`；回复积累 → `/cheatx-persona`
+- 与 [observation-lifecycle.md](../../shared-references/observation-lifecycle.md) 紧耦合
