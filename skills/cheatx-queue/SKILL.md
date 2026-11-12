@@ -1,7 +1,7 @@
 ---
 name: cheatx-queue
 description: 登记一条帖子"定稿、排队待发"。建 posts/<id>/ 目录 + 写 final.md（实际要发的文本）+ 定稿与草稿差 ≥30% 时触发 v2 预测 + 队列 +1。与 cheatx-publish 配对：定稿入队，发布出队。替代上游 cheat-on-content 的 cheat-shoot（"拍了"）。触发词："定稿"/"定稿 X"/"排进队列"/"queued"/"这条写好了"。
-argument-hint: <drafts-path-or-id> [— planned: <ISO>]
+argument-hint: '<drafts-path-or-id> [— planned: <ISO>]'
 allowed-tools: Bash(*), Read, Write, Edit, Glob
 ---
 

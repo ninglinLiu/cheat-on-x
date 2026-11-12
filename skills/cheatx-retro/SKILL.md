@@ -1,7 +1,7 @@
 ---
 name: cheatx-retro
 description: T+48h（长帖 / Article T+7d）数据回收 + 复盘：拿到实际数据 → 对照预测 → 提炼观察写进 rubric-memo.md → 重算该形态基线 → 判断要不要提议 bump。支持单条和批量（"复盘到期的 <csv>" 一次处理所有到期帖子）。数据来源：油猴脚本 / X Analytics 导出的 CSV（默认）、X API（可选）、手动粘贴。只追加 `## 复盘` 段，绝不改预测段。触发词："复盘 [path]"/"复盘到期的 [csv]"/"retro"/"48 小时到了"/"把这几条复盘了"。
-argument-hint: <prediction-file | posts/<id>/ | due> [<csv>...] [— source: csv|x-api|manual] [— early]
+argument-hint: '<prediction-file | posts/<id>/ | due> [<csv>...] [— source: csv|x-api|manual] [— early]'
 allowed-tools: Bash(*), Read, Edit, Write, Glob, Grep, Skill
 ---
 

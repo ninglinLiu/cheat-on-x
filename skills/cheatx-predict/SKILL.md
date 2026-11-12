@@ -1,7 +1,7 @@
 ---
 name: cheatx-predict
 description: 给一条（或一批）X 帖子草稿写 immutable 盲预测日志——cheat-on-x 校准循环的核心动作。三种模式：完整预测（thread / 长帖 / 重要帖子）、快押（日常短帖，每个组件可一行）、批量（一次给 drafts/ 下多条打分预测）。打分委派给 `cheatx-score-blind` sub-agent，主 Claude review 后落盘；预测段写完由 hook 锁死。被 cheatx-queue 以 v2 模式调用时在原文件追加 `## 预测 v2`。**必须在发布之前跑。**触发词："启动预测"/"快押"/"批量预测"/"start prediction"/"给这条写预测"。
-argument-hint: <draft-path|drafts/> [— mode: full|quick|batch|v2] [— prediction-file: <path>] [— skip-blind]
+argument-hint: '<draft-path|drafts/> [— mode: full|quick|batch|v2] [— prediction-file: <path>] [— skip-blind]'
 allowed-tools: Bash(*), Read, Write, Edit, Glob, Task
 ---
 

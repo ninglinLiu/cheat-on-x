@@ -67,8 +67,8 @@ v1  composite = (HK×1.5 + RP + SV×1.5 + RS + DW + FT + NF) / 8 × 2.0 − NR �
 
 **结果变量**用 `实际曝光 / 预测时 Baseline`（倍数），不用绝对曝光——账号在长大，绝对数不可比。
 
-- **只改系数**：维度分不变，直接用新公式重算所有样本的 composite（零成本，必须全量）
-- **新增维度**：老样本需要回补新维度分。通过 `cheatx-score-blind` sub-agent 对 `drafts/<id>.md` 打新维度（盲打，不看结果）。
+- **只改系数**：header 标 `BlindScored By: subagent-v1` 的样本，维度分直接复用，用新公式重算 composite（零成本，必须全量）。标 `main-claude-self` 或 `mixed` 的样本，维度分可能被污染——**必须**先经 `cheatx-score-blind` 重打再进池（上游 cheat-on-content 的做法是所有样本全部重打；X 版只对非盲样本重打，因为 X 版的预测默认就是盲打的）
+- **新增维度**：老样本需要回补新维度分。通过 `cheatx-score-blind` sub-agent 对 `drafts/<id>.md`（v2 样本用 `posts/<id>/final.md`）打新维度（盲打，不看结果）。
   - 池 ≤ 40 条 → 全量回补
   - 池 > 40 条 → 按"形态 × 结果三分位"分层抽 40 条回补，只在这 40 条上做 Step 3；表里标明抽样
 

@@ -3,7 +3,7 @@ name: cheatx-score-blind
 description: |
   INTERNAL sub-agent for blind rubric scoring of X drafts. **NOT a user-facing skill — do NOT invoke from the main conversation.** Spawned via the Task tool by cheatx-score / cheatx-predict / cheatx-bump to get a context-isolated score. Receives ONLY draft path(s) + rubric_notes path; refuses any other input. Outputs strict JSON: 8 core dimensions (HK RP SV RS DW FT NF NR) + optional candidate dims, each {score 0-5, confidence, one-line reason}. **Hard refuses to Read** .cheatx-state.json, predictions/*, posts/*/report.md, imports/*, rubric-memo.md, audience.md, or anything that could leak post-publish data. Channel B in the 3-channel calibration model (A = main, B = blind sub-agent, C = cross-model audit).
 allowed-tools: Read, Glob, Grep
-argument-hint: <draft-path...> <rubric-notes-path>
+argument-hint: '<draft-path...> <rubric-notes-path>'
 ---
 
 # /cheatx-score-blind — Channel B（盲打分 sub-agent）
@@ -40,6 +40,7 @@ Channel B 用 Task tool 把打分丢进一个**全新 context**：这个 sub-age
 |---|---|
 | `drafts/<date>_<id>_<short>.md` | 草稿（Task prompt 显式传入，可以多个，批量最多 10 个） |
 | `posts/<date>_<id>_<short>/final.md` | **仅** v2 模式：定稿后、发布前的文本。同目录的 `report.md` 仍然禁读 |
+| `.cheatx-cache/blind-input/*.md` | 主 Claude 准备的**纯正文**临时文件：`cheatx-score` 的开头变体、`cheatx-learn-from` 的对标帖子正文、`cheatx-bump` 回补用的正文。只允许正文 + frontmatter 形态字段，主 Claude 写入前必须去掉任何数字指标 |
 | `rubric_notes.md` | 当前公式 + 维度定义 |
 
 草稿可能带 frontmatter（`form` / `media` / `has_link` / `quote_target`）和一个"被引用 / 被回复的帖子（上下文，不打分）"段——这些都是发布前就有的信息，可以读。
@@ -51,7 +52,7 @@ Channel B 用 Task tool 把打分丢进一个**全新 context**：这个 sub-age
 | `.cheatx-state.json` | `blocked_contaminated_input` |
 | `predictions/*.md` | `blocked_contaminated_input` |
 | `posts/*/report.md` | `blocked_contaminated_input` |
-| `imports/*`、`.cheatx-cache/*` | `blocked_contaminated_input` |
+| `imports/*`、`.cheatx-cache/*`（`blind-input/` 除外） | `blocked_contaminated_input` |
 | `STATUS.md`、`candidates.md`、`benchmark.md`、`samples/*`、`post_patterns.md` | `blocked_contaminated_input` |
 | **`rubric-memo.md`** | **`blocked_rubric_memo`** |
 | **`audience.md`** | **`blocked_audience`** |
@@ -75,7 +76,7 @@ Task prompt 漏了某条路径 → 回 JSON 说明缺什么。**绝不**自己 G
 ### Phase 0：边界自检
 
 1. 从 Task prompt 解析 `draft_paths`（1-10 个）和 `rubric_notes_path`
-2. 每个路径对照白名单；不合规 → 该条 `refusal`
+2. 每个路径对照白名单；不合规 → 该条 `refusal`。`.cheatx-cache/blind-input/` 的文件读完先扫一遍：出现曝光 / 赞 / 回复数之类的数字、"高档 / 低档"标签、handle → 该条标 `non_blind_warning`
 3. Read `rubric_notes.md` → 当前版本、维度列表、公式；跑兜底自检
 4. Read 每份草稿
 

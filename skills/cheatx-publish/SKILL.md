@@ -1,7 +1,7 @@
 ---
 name: cheatx-publish
 description: 登记一条帖子已在 X 上发布：从链接解析 status id、把发布信息写进预测文件 header、检查发出的文本和预测时的定稿是否一致（只读正文，不读任何数字）、出队、排复盘到期时间。**不动预测段任何字符。**触发词："已发 https://x.com/..."/"发了"/"posted"/"I shipped"/"刚发完 [链接]"。
-argument-hint: <post-url> [prediction-file]
+argument-hint: '<post-url> [prediction-file]'
 allowed-tools: Bash(*), Read, Edit, Glob
 ---
 

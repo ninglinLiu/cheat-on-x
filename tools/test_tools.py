@@ -175,6 +175,29 @@ class TestCalibPool(unittest.TestCase):
         self.assertAlmostEqual(float(thread["outcome_ratio"]), 2130 / 420, places=3)
         self.assertAlmostEqual(float(thread["log_score"]), round(__import__("math").log(0.15), 4))
 
+    def test_rescores_backfill_new_dimension(self):
+        import calib_pool
+        import json as _json
+        side = self.dir / "sidecars"
+        side.mkdir()
+        (side / "bump-1.json").write_text(_json.dumps({"results": [
+            {"draft_path": "drafts/2026-11-04_id3_p3.md", "refusal": None,
+             "dimensions": {"SV": {"score": 4, "confidence": "high", "reason": "x"}},
+             "candidate_dimensions": {"TM": {"score": 2, "confidence": "low", "reason": "y"}}},
+            {"draft_path": "posts/2026-11-01_id0_p0/final.md", "refusal": None,
+             "dimensions": {}, "candidate_dimensions": {"TM": {"score": 5, "confidence": "low", "reason": "z"}}},
+        ]}), encoding="utf-8")
+        out = self.dir / "pool2.csv"
+        calib_pool.main(["pool", str(self.dir), "--out", str(out), "--rescores", str(side),
+                         "--formula-new", "HK + SV + TM"])
+        import csv as _csv
+        with open(out, encoding="utf-8") as fh:
+            rows = {Path(r["file"]).stem: r for r in _csv.DictReader(fh)}
+        self.assertEqual(float(rows["2026-11-04_id3_p3"]["composite_new"]), 4 + 4 + 2)   # SV overridden 5→4
+        self.assertEqual(float(rows["2026-11-01_id0_p0"]["composite_new"]), 3 + 2 + 5)
+        self.assertEqual(rows["2026-11-02_id1_p1"]["composite_new"], "")                 # TM missing → needs backfill
+        self.assertIn("rescored", rows["2026-11-04_id3_p3"]["flags"])
+
     def test_formula_is_safe(self):
         import calib_pool
         self.assertEqual(calib_pool.eval_formula("max(HK, 2) * 2", {"HK": 1}), 4.0)

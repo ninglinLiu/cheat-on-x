@@ -6,7 +6,7 @@
       (excludes reconstructed / integrity-warning / exogenous samples). Used by cheatx-retro
       to update state.baseline_impressions.
 
-  pool PRED_DIR [--formula-old EXPR] [--formula-new EXPR] [--out FILE]
+  pool PRED_DIR [--formula-old EXPR] [--formula-new EXPR] [--rescores DIR] [--out FILE]
       calibration pool CSV for tools/rank_check.py and tools/score-curve.py:
       file, form, published_at, composite_old, composite_new, outcome_ratio, weight,
       impressions, baseline, center, ratio_to_center, log_score, flags, + one column per dimension.
@@ -165,8 +165,36 @@ def cmd_baseline(a) -> int:
     return 0
 
 
+def load_rescores(d: Path) -> dict[str, dict[str, int]]:
+    """cheatx-score-blind sidecars → {prediction stem: {dim: score}}.
+
+    draft_path drafts/<stem>.md or posts/<stem>/final.md or .cheatx-cache/blind-input/<stem>.md
+    maps to predictions/<stem>.md.
+    """
+    out: dict[str, dict[str, int]] = {}
+    for f in sorted(d.glob("*.json")):
+        data = json.loads(f.read_text(encoding="utf-8"))
+        for res in data.get("results", []):
+            if res.get("refusal") and res.get("refusal") != "non_blind_warning":
+                continue
+            p = Path(res.get("draft_path", ""))
+            stem = p.parent.name if p.name == "final.md" else p.stem
+            dims = {k: v["score"] for k, v in (res.get("dimensions") or {}).items() if isinstance(v, dict)}
+            dims.update({k: v["score"] for k, v in (res.get("candidate_dimensions") or {}).items()
+                         if isinstance(v, dict)})
+            out.setdefault(stem, {}).update(dims)
+    return out
+
+
 def cmd_pool(a) -> int:
     recs = [r for r in load_dir(Path(a.pred_dir)) if r.get("retro")]
+    if a.rescores:
+        rs = load_rescores(Path(a.rescores))
+        for r in recs:
+            stem = Path(r["file"]).stem
+            if stem in rs:
+                r["dims"] = {**r["dims"], **rs[stem]}
+                r["flags"].append("rescored")
     rows = []
     dim_codes = sorted({c for r in recs for c in r["dims"]})
     for r in recs:
@@ -218,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--formula-old")
     s.add_argument("--formula-new")
     s.add_argument("--out")
+    s.add_argument("--rescores", help="目录：cheatx-score-blind 写的 sidecar JSON（回补 / 重打的维度分覆盖预测文件里的）")
     s.add_argument("--include-excluded", action="store_true")
     a = p.parse_args(argv)
     if not Path(a.pred_dir).is_dir():
