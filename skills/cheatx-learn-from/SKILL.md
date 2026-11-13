@@ -40,8 +40,10 @@ X 上做这件事比视频平台简单：帖子本身就是文字，不需要转
 1. 在 x.com 打开 @<handle> 的主页
 2. 往下滚，滚过 20-40 条（越多越准；滚到你想要的时间范围为止）
 3. 想要它的回复区（拆读者反应）：点进几条高浏览的帖子，把回复滚一遍
-4. 面板点"导出：全部已记录帖子"，文件放进 imports/
+4. 面板点"导出：全部已记录帖子"。下载完说一声"好了"
 ```
+
+用户说"好了"→ `python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py find --project . --copy` 自己去下载文件夹找（复制进 `imports/`），不让用户挪文件或报路径。
 
 **b) X API（可选，按量计费）**
 
@@ -122,6 +124,8 @@ python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py history import
 ```json
 { "benchmark_status": "imported", "benchmark_handles": ["<handle>"], "benchmark_sample_count": <N> }
 ```
+
+并从 `deferred_setup` 里删掉 `benchmark`（如果有）。
 
 ## Key Rules
 

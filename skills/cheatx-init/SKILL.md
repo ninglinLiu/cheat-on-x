@@ -1,45 +1,66 @@
 ---
 name: cheatx-init
-description: cheat-on-x 的首次 onboarding 与脚手架创建器。在用户的 X 内容项目目录里问 8 个问题（账号、形态、语言、每天几条、历史、数据路线、选题池、hooks）+ 对标账号，然后创建状态文件、rubric、目录、模板、hooks，并可导入账号历史建立曝光基线。触发词："初始化 cheat-on-x"/"X 初始化"/"init cheat-on-x"/"setup cheat-on-x"。**其他子 skill 在 .cheatx-state.json 不存在时自动路由到此。**
-argument-hint: "[— form: x-post|x-longform|x-mixed]"
+description: cheat-on-x 的首次 onboarding 与脚手架创建器。默认快速模式：只问 3 个问题（账号、主要发什么、每天几条），其余用默认值、等用得上时再问；完整模式（— full）问 8 个问题 + 对标账号。创建状态文件、rubric、目录、模板、hooks，并在工作区写 AGENTS.md / CLAUDE.md，让以后每个会话自动进入托管模式。触发词："初始化 cheat-on-x"/"X 初始化"/"init cheat-on-x"/"setup cheat-on-x"。**其他子 skill 在 .cheatx-state.json 不存在时自动路由到此。**
+argument-hint: "[— mode: quick|full] [— form: x-post|x-longform|x-mixed]"
 allowed-tools: Bash(*), Read, Write, Edit, Glob, Skill
 ---
 
 # /cheatx-init — 首次 onboarding
 
-从零到能写第一条预测：没有历史 ≤ 5 分钟；要导入历史 ≤ 10 分钟。
+从零到能写第一条预测：快速模式 ≤ 2 分钟；完整模式没有历史 ≤ 5 分钟、要导入历史 ≤ 10 分钟。
+
+## 两种模式
+
+| | 快速（默认） | 完整（`— mode: full`，或用户说"详细设置"） |
+|---|---|---|
+| 问题 | 3 个：账号 / 主要发什么 / 每天几条 | 8 个 + 对标账号 |
+| 没问的 | 用默认值，记进 `state.deferred_setup`，托管模式到用得上时再问 | — |
+| 首屏 | 3 行 | 完整期望管理 |
+| 脚手架说明 | 一句话带过 | 每个文件都解释 |
+
+用户是通过 [START.md](../../START.md)（"把链接丢给 agent 说启动"）来的 → 一定用快速模式。
 
 ## Overview
 
 ```
-Phase 0   检测当前状态
-Phase 1   首屏：期望管理
-Phase 2   8 个问题（一次一个）
-Phase 2.5 对标账号
-Phase 3   创建脚手架（逐项解释）
-Phase 3.5 导入账号历史（Q5 = 有历史且同意）
-Phase 4   测试 hooks 真的生效
+Phase 0   检测当前状态 + 确定工作区
+Phase 1   首屏：期望管理（快速 3 行 / 完整版）
+Phase 2Q  快速模式：3 个问题 + 默认值
+Phase 2   完整模式：8 个问题（一次一个）
+Phase 2.5 完整模式：对标账号
+Phase 3   创建脚手架（含 git 仓库 + 工作区 AGENTS.md / CLAUDE.md）
+Phase 3.5 导入账号历史（完整模式 Q5 = 有历史且同意；快速模式推迟）
+Phase 4   测试 hooks 真的生效（仅 Claude Code）
 Phase 4.5 （Phase 2.5 选 a）进入 /cheatx-learn-from
-Phase 5   "下一步说什么"清单
+Phase 5   收尾：告诉用户以后怎么说话
 ```
 
 ## Constants
 
-- **SCHEMA_VERSION = "x1.0"**、**SKILL_VERSION = "0.1.0"**
+- **SCHEMA_VERSION = "x1.0"**、**SKILL_VERSION = "0.2.0"**
 - **DEFAULT_RETRO_WINDOW_HOURS = 48**、**DEFAULT_RETRO_WINDOW_HOURS_LONGFORM = 168**
 - **TREND_DEFAULT_SOURCES = ["manual-paste"]**
-- `<cheat-on-x>` = 源码克隆目录：`readlink -f ~/.claude/skills/cheatx-init` 往上两级（Codex：`~/.codex/skills/cheat-on-x`）；找不到就问用户
+- `<cheat-on-x>` = 工具包目录，查找顺序见根 SKILL.md「找到工具包」。确定后写进 state 的 `cheatx_home`（绝对路径），以后各 skill 直接读它
 
 ## Workflow
 
 ### Phase 0：检测
 
-1. 当前目录是用户的 **X 内容项目**（不是 cheat-on-x 源码目录——源码目录里有 `install.sh` 和 `skills/cheatx-init/`，是的话提醒用户换目录）
+1. 确定**工作区**（用户的 X 发帖目录，不是 cheat-on-x 源码目录——源码目录里有 `install.sh` 和 `skills/cheatx-init/`）。规则同 [START.md](../../START.md) 第 3 步：当前目录为空或用户指定 → 用当前目录；当前目录是源码目录 / 代码仓库 / 用户主目录 → 建 `~/x-posts` 并告诉用户一句。下文"当前目录"都指工作区
 2. 已有 `.cheatx-state.json` → "这个项目已初始化，重新初始化会覆盖配置——确认？"明确确认才继续
 3. 有 `.cheat-state.json`（上游 cheat-on-content 的）→ 说明两者不通用：建议在新目录初始化 X 项目
 4. 有 `rubric_notes.md` / `predictions/` 但没有 state → 半初始化，问"从现有文件推断，还是重置？"
 
-### Phase 1：首屏（照写，不要软化）
+### Phase 1：首屏
+
+**快速模式**（意思照这个，用自己的话，3 行以内）：
+
+```
+先说一句：这套工具让你每条帖子发之前先押个注，48 小时后对答案，一条一条变准。
+头几条会押得很不准，正常。问你 3 个问题就能开始。
+```
+
+**完整模式**（照写，不要软化）：
 
 ```
 🎯 Cheat on X — 初始化
@@ -61,7 +82,36 @@ Phase 5   "下一步说什么"清单
 准备好了吗？
 ```
 
-### Phase 2：8 个问题（一次一个，不批量）
+### Phase 2Q：快速模式 3 个问题（一次一个）
+
+**Q1：账号**——同完整模式 Q1（handle、粉丝数、Premium）。用户只给了 handle → 粉丝数和 Premium 追问一句，还不知道就粉丝记 `null`、Premium 记 `unknown`
+
+**Q2：主要发什么**（口语问法，不列字母表）
+
+> "你平时主要发短帖、thread、长文，还是都有？在别人帖子下回复涨粉也算的话告诉我。"
+
+→ 映射到 `forms_enabled` / `content_form`（规则同完整模式 Q2）。用户说"不知道 / 都有" → `["single", "thread", "reply"]`、`x-post`
+
+**Q3：每天几条**——同完整模式 Q4
+
+**其余用默认值，写进 state，并把要以后再问的项记进 `deferred_setup`：**
+
+| 项 | 默认值 | 推迟到托管模式再问？ |
+|---|---|---|
+| 语言（Q3） | 按用户跟你说话用的语言：中文 → `zh`，英文 → `en` | `language`（用户第一次用另一种语言写草稿时） |
+| 历史（Q5） | `calibration_samples: 0`，基线空 | `history`（第一次押注之前） |
+| 数据路线（Q6） | `csv` / `["x-csv-import"]` / `x_api.enabled: false` | `data_route`（第一次登记发布后：装油猴脚本，或改用 API / 手动） |
+| 选题池（Q7） | `none` | 不推迟（用户要选题时自然会建） |
+| hooks（Q8） | Claude Code → `true`（一句话说明"我装了一个预测锁，押完的注谁都改不了"）；其他 agent → `false` | 不推迟 |
+| 对标账号（Phase 2.5） | `benchmark_status: "pending"` | `benchmark`（第一次复盘后或用户要选题时） |
+
+用户主动提到了某项（"我发过很多帖子了""我想学 @xxx"）→ 当场处理，不推迟。
+
+用户连 3 个问题都不想答 → 全用默认值（粉丝 `null`、`x-post`、`target_posts_per_day: 1`），告诉用户"以后随时说'改设置'"。
+
+快速模式跳过 Phase 2 和 Phase 2.5，直接进 Phase 3。
+
+### Phase 2：完整模式 8 个问题（一次一个，不批量）
 
 **Q1：账号**
 
@@ -139,7 +189,7 @@ b → 进 Phase 3.5（脚手架建好之后做）。
 
 → `hooks_installed`：bool（默认 true）
 
-### Phase 2.5：对标账号
+### Phase 2.5：对标账号（完整模式）
 
 ```
 🎯 对标账号
@@ -157,7 +207,7 @@ c) 不导
 
 → `benchmark_status`：`imported`（a 完成后）/ `pending` / `none`
 
-### Phase 3：创建脚手架（每一项都说明作用）
+### Phase 3：创建脚手架（完整模式每一项都说明作用；快速模式全部建完后一句话带过："文件都建好了，你不用管它们"）
 
 0. **`.gitignore`（第一步）**
 
@@ -168,13 +218,19 @@ c) 不导
    - 复制 `<cheat-on-x>/templates/gitignore.template`；已有 `.gitignore` → 只追加缺的行（至少 `.cheatx-secrets.json`、`imports/`、`.cheatx-cache/`、`.cheatx-hooks/`）
    - 项目已经 git 跟踪了 imports/ 或 secrets → 提示 `git rm -r --cached imports .cheatx-secrets.json`
 
+0.5 **git 仓库**：工作区还不是 git 仓库 → `git init`（只在本地，不建远程、不推送）。"预测文件每次押注后自动提交一次，事后改动会留痕。"没装 git → 告诉用户，`state.git_trail = false`，不阻塞
+
 1. **`.cheatx-state.json`**——所有 `<…>` 必须换成映射表里的具体值，不存字母：
 
    ```json
    {
      "schema_version": "x1.0",
-     "skill_version": "0.1.0",
+     "skill_version": "0.2.0",
      "edition": "x",
+     "cheatx_home": "<工具包绝对路径>",
+     "init_mode": "<quick | full>",
+     "deferred_setup": [<快速模式：如 "history", "data_route", "benchmark", "language"；完整模式：[]>],
+     "git_trail": <工作区是 git 仓库 → true>,
      "x_handle": "<Q1>",
      "x_premium": "<Q1>",
      "followers_at_init": <Q1>,
@@ -259,12 +315,20 @@ c) 不导
       - `hooks/meta-logging.json` 的各事件
     - 命令路径统一 `${CLAUDE_PROJECT_DIR}/.cheatx-hooks/...`
 
-### Phase 3.5：导入账号历史（Q5 = b）
+12. **工作区 `AGENTS.md` + `CLAUDE.md`**（两种模式都做；这是"启动一次，以后一直生效"的关键）：
+    - 读 `<cheat-on-x>/templates/project-agents.template.md`，把 `[HANDLE]` 换成 handle（没有就写"你"），`[CHEATX-HOME]` 换成 `cheatx_home`
+    - 文件不存在 → 写入；已存在 → 有 `<!-- cheat-on-x:begin -->…<!-- cheat-on-x:end -->` 块就替换这一块，没有就追加到末尾。**不动用户原有内容**
+    - 两个文件写同样的块：Codex / Cursor / Gemini CLI 读 `AGENTS.md`，Claude Code 读 `CLAUDE.md`
+    - 一句话告诉用户："以后在这个目录打开 agent，它会自动接上，不用再说'启动'。"
+
+### Phase 3.5：导入账号历史（完整模式 Q5 = b；快速模式由托管模式在第一次押注前提议）
+
+托管模式下调用这一段时，第 1 步先跑 `import_csv.py find --project . --copy`，找到用户刚导出的文件就直接用，不让用户报路径。导入完把 `history` 从 `deferred_setup` 删掉。
 
 目的：算出每种形态的常态曝光（基线），让 cheatx-seed 知道你写过什么。**不**为历史帖子造预测文件——它们不是盲预测，造出来只会污染校准池。
 
 1. 拿数据：
-   - csv：让用户在 x.com 打开自己主页，往下滚 30-50 条（越多基线越准），面板"导出：我的帖子 + 回复/引用"，放进 `imports/`
+   - csv：让用户在 x.com 打开自己主页，往下滚 30-50 条（越多基线越准），面板"导出：我的帖子 + 回复/引用"，下载完说一声；然后 `import_csv.py find --project . --copy` 自己找文件
    - x-api：`xapi.py history <handle> --limit 50 --project .` 先预演给费用，同意后 `--yes`
    - manual：问"最近 10 条大概多少浏览？"——给个范围就行
 2. 跑：
@@ -278,9 +342,11 @@ c) 不导
 
 失败（导出没有你的帖子 / API 报错）→ 降级为 manual 估值，不阻塞。
 
-### Phase 4：测试 hooks（Q8 = yes）
+### Phase 4：测试 hooks（Q8 = yes，仅 Claude Code）
 
-**不假装成功。**两步都要做：
+不是 Claude Code → 跳过本阶段，告诉用户一句："这个 agent 没有强制锁，押完的注靠 git 留痕——改了会看得出来。"
+
+**不假装成功。**两步都要做（快速模式下结果一句话汇报即可）：
 
 1. **脚本直测**：
 
@@ -309,25 +375,26 @@ c) 不导
 
 调 `/cheatx-learn-from`，完成后回到 Phase 5。
 
-### Phase 5：下一步清单
+### Phase 5：收尾
+
+**不要给用户一张命令清单。**意思照这个说（用自己的话）：
 
 ```
-✅ 初始化完成 · rubric v0 · 校准样本 0 · confidence 🔴
+好了。以后你不用记任何命令，正常跟我说就行：
+- 写了草稿就直接贴给我，我打分、提修改建议
+- 要发了告诉我一声，我先花几秒押个注、锁起来
+- 发完把链接给我；48 小时后我提醒你对答案
 
-以后直接说：
-📝 写好草稿     → "打分这条 drafts/<…>.md"（探索，不写文件）
-🎯 发之前       → "启动预测 drafts/<…>.md" / "快押 …" / "批量预测 drafts/"
-📦 定稿         → "定稿 drafts/<…>.md"
-🚀 发完         → "已发 https://x.com/…/status/…"
-📊 48 小时后    → 油猴脚本导出 → "复盘到期的 imports/<…>.csv"
-📈 任何时候     → "X 状态"
+头几条押得不准是正常的——早期押注的价值是攒数据，不是做决定。
 
-<Q7 = a：>
-🌱 现在跑 /cheatx-seed 找第一批选题？回 "yes" 立刻开始。
-
-💡 confidence 会随复盘自动提升：第 5 条复盘 🟡，第 15 条 🟢。
-   别因为 confidence 低就跳过预测——早期预测的价值是采集数据，不是做决策。
+现在有想发的东西吗？直接贴过来，或者说个主题我帮你起草。
 ```
+
+hooks 测试有一步没通过 → 在这段之前照实说哪一步、怎么办，**不写"✅ 完成"**。
+
+熟练用户（完整模式、或用户问"有没有命令"）→ 再补一句"也可以直接用 `/cheatx-*` 斜杠命令，`/cheatx-status` 看全部"。
+
+然后进入根 SKILL.md 的**托管模式**。
 
 ## Key Rules
 
@@ -340,7 +407,7 @@ c) 不导
 
 ## Refusals
 
-- 「跳过问题，直接建文件」 → 拒绝。答案决定 rubric、节奏、hooks
+- 「跳过问题，直接建文件」 → 快速模式允许：全用默认值，告诉用户以后说"改设置"再调；完整模式改走快速模式
 - 「把我另一个项目的配置同步过来」 → 提示手动复制 `.cheatx-state.json` 和 `rubric_notes.md`，不自动跨项目同步
 - 「不装 hook 但保留 immutability」 → 允许，`hooks_installed: false`，cheatx-status 持续提示"预测锁是君子协定"
 - 「把我历史帖子都补成预测」 → 拒绝。看过结果的预测不是预测；需要的话逐条 `_redo` reconstructed，且不进校准池
@@ -350,6 +417,8 @@ c) 不导
 | 字段 | 时机 | 来源 |
 |---|---|---|
 | `schema_version` / `skill_version` / `edition` | Phase 3 | 常量 |
+| `cheatx_home` / `init_mode` / `git_trail` | Phase 3 | 工具包位置 / 模式 / Phase 3 第 0.5 步 |
+| `deferred_setup` | Phase 3（快速模式） | Phase 2Q 默认值表；托管模式处理完一项就删一项 |
 | `x_handle` / `x_premium` / `followers_at_init` | Phase 3 | Q1 |
 | `forms_enabled` / `content_form` | Phase 3 | Q2 |
 | `primary_language` | Phase 3 | Q3 |

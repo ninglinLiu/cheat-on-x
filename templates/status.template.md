@@ -42,6 +42,6 @@
 2. `启动预测 drafts/<...>.md`（日常短帖可以 `快押`）
 3. 发之前 `定稿 drafts/<...>.md`
 4. 发完 `已发 https://x.com/.../status/...`
-5. 48 小时后：在 x.com 用油猴脚本导出 CSV → `复盘到期的 imports/<...>.csv`
+5. 48 小时后：在 x.com 用油猴脚本导出 CSV → 跟 agent 说"复盘到期的"（它自己去下载文件夹找文件）
 
 第 5 条复盘后可以提议第一次 `/cheatx-bump`。完整流程见 `WORKFLOW.md`。

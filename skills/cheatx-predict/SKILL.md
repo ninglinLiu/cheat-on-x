@@ -29,6 +29,7 @@ Phase 4   bucket + 概率 + 中枢 + 次要押注
 Phase 5   反事实 + 关键校准假设
 Phase 5.5 用户 review（批量时一张总表）
 Phase 6   落盘（v1 新文件 / v2 追加）
+Phase 6.5 git 留痕（工作区是 git 仓库时）
 Phase 7   更新 state
 Phase 8   控制台总结
 ```
@@ -70,6 +71,7 @@ planned_at: 2026-11-12T21:00+08:00   # 可选
 按 [blind-prediction-protocol.md](../../shared-references/blind-prediction-protocol.md)：
 
 1. 问一句（批量时一次问完）："这些都还没发吧？"
+   - 托管模式下用户刚说过"准备发了 / 我去发了 / 明天发"这类话 → 已经回答了，不用再问
    - 没发 → 通过
    - 已发 → 这一条转 reconstructed（`_redo.md`，不进校准池）。唯一例外：发出 ≤ 10 分钟且用户确认没看任何计数和回复 → 允许，header 标 `published_before_prediction: true`
 2. 扫当前对话：出现过这条帖子的浏览 / 赞 / 回复数字或回复内容 → reconstructed
@@ -84,7 +86,9 @@ planned_at: 2026-11-12T21:00+08:00   # 可选
 | `drafts/<date>_<id>_<short>.md` | 单条 |
 | `drafts/`（目录）或多个路径 | 批量：列出所有**还没有对应 predictions/ 文件**的草稿，让用户确认清单 |
 | `<id>` 或 `<short>` | glob `drafts/*_<id>_*.md` / `drafts/*<short>*.md` |
-| drafts/ 外的文件 | 问"要我复制到 `drafts/<今天>_<id>_<short>.md` 管理吗？"——同意才继续 |
+| drafts/ 外的文件 | 问"要我复制到 `drafts/<今天>_<id>_<short>.md` 管理吗？"——同意才继续。托管模式下直接复制，告诉用户一句 |
+| 对话里贴的正文（托管模式最常见） | 按根 SKILL.md「文件对用户不可见」的规则存成 `drafts/<今天>_<id>_<short>.md`、推断 frontmatter，再继续。已经在对话里存过的草稿 → 用那个文件 |
+| "这条""刚才那条"之类的指代 | 对话里最近讨论的那份草稿；有歧义就用内容问（"是'删掉的 7 个提示词'那条吗？"） |
 | `— mode: v2 — prediction-file: <path>` | v2 模式（`cheatx-queue` 调用） |
 
 模式自动判定：
@@ -104,6 +108,8 @@ v2 额外：读 `posts/<同名>/final.md`，与预测时的 `Draft Hash` 比较�
 6. **基线**：`baseline_impressions[form]` → 不足则 `all` → 都没有则 `max(100, 粉丝数 × 0.3)`（粉丝数问用户当前值，记进 header 的 `Followers at Predict`）
 7. **协变量**：计划发帖时间（问；不知道写 `unplanned`）、距上一条主帖分钟数（从 `recent_publishes` 估）、Premium、外链、媒体
 8. 字数检查：单帖超过 280 加权字符（中文按 2 计）但没开长帖 → 提醒用户"这条发不出去，要拆 thread 还是发长帖？"
+9. 要问用户的发布信息（配图 / 视频、计划时间、当前粉丝数）**合成一句话一次问完**，并给默认值："配图吗？大概几点发？（不知道就回'默认'：纯文字、现在发）"
+10. `state.deferred_setup` 含 `history`、`calibration_samples = 0` 且 `baseline_impressions.all` 为空 → 押注前提议一次导入历史（见根 SKILL.md「推迟的设置项」）。用户说不要就从列表删掉，按 cold-start 基线继续
 
 ### Phase 2：委派 cheatx-score-blind
 
@@ -203,6 +209,18 @@ NF 的盲分 confidence 常为 low（sub-agent 看不到账号定位）——主
 回 "ok" 落盘，或指出哪里不对（"中枢太高" / "RP 给 3"）。
 ```
 
+**托管模式下的快押**：不展示 8 维表，用人话三四行：
+
+```
+押注：命中——大概 420–1,260 曝光，最可能 800 左右（把握：低，头几条都这样）
+理由：开头的"删掉 7 个"会让人停下来，但没留让人回复的口子
+最怕的情况：落到"持平"，说明清单类在你这里不吸引收藏
+
+回 ok 我就锁定，然后你就可以发了；觉得哪里不对直接说。
+```
+
+用户问"为什么""细节"→ 再展开成上面的完整版。写进文件的内容不因展示简化而减少——7 个标题照样齐全。
+
 **批量**：一张总表，每行一条，用户可以 "全部 ok" 或 "第 2 条中枢改成 500，其余 ok"：
 
 ```
@@ -240,6 +258,21 @@ NF 的盲分 confidence 常为 low（sub-agent 看不到账号定位）——主
 
 v1 一个字不动。复盘时用最后一个 `## 预测 vN`。
 
+### Phase 6.5：git 留痕
+
+`state.git_trail = true`（或工作区是 git 仓库）→ 落盘后立刻提交，**只提交这次的草稿和预测文件**，不带用户其他改动：
+
+```bash
+git add -- drafts/<同名>.md predictions/<同名>.md
+git commit -m "predict: <短名> (<bucket>, 中枢 <N>)" -- drafts/<同名>.md predictions/<同名>.md
+```
+
+- v2 追加后同样提交（`predict v2: …`）
+- 提交失败（没配 git 用户名等）→ 告诉用户一句怎么修，不阻塞。**不要**替用户配置全局 git 身份；可以用 `git -c user.name=cheat-on-x -c user.email=cheat-on-x@localhost commit …` 只对这次提交生效
+- 只在本地提交，**不推送**
+
+在没有 hook 的 agent（Codex / Cursor 等）里，这是预测不可改的唯一证据：事后改了预测段，`git diff` 一眼可见。
+
 ### Phase 7：更新 state
 
 - 流程开始时写 `in_progress_session = {"type": "prediction" | "batch_prediction", "files": [...], "started_at", "rubric_version"}`，落盘完成后清回 null
@@ -257,8 +290,15 @@ v1 一个字不动。复盘时用最后一个 `## 预测 vN`。
 下一步：
 - 发之前 → "定稿 drafts/2026-11-12_…"（定稿和草稿差 ≥30% 会追加 v2）
 - 发完 → "已发 https://x.com/…/status/…"
-- 48 小时后 → 导出 CSV，"复盘到期的 imports/…"
+- 48 小时后 → 导出 CSV，"复盘到期的"（文件自动找）
 ```
+
+**托管模式**下不给上面这张命令清单，而是直接接着做：
+
+- 用户是"马上就发"（"我去发了""就这样发"）→ 立刻调 `/cheatx-queue — final: same`（定稿 = 草稿，不再问），然后说："锁好了，可以发了。发完把链接贴给我。"
+- 用户是"晚点 / 明天发"→ 调 `/cheatx-queue — final: same — planned: <时间>`，然后说："锁好了，排进队列了。发之前要是改了字，告诉我一声。"
+- 用户发之前又改了稿 → 走 `/cheatx-queue`（不带 `final: same`），改动 ≥ 30% 会追加 v2
+- 只说一句提醒："发出去之后，这条的浏览数先别告诉我，48 小时后一起看。"
 
 ## Key Rules
 

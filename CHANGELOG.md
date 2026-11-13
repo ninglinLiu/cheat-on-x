@@ -6,6 +6,34 @@ cheat-on-x is derived from [XBuilderLAB/cheat-on-content](https://github.com/XBu
 
 ---
 
+## [0.2.0] — 2026-11-13 — 托管模式：不用学命令
+
+用户反馈：新人不知道草稿要放 `drafts/`，也记不住"启动预测""定稿""复盘到期的"这些说法。这一版让 agent 自己判断每句话该接哪个环节。
+
+### Added
+
+- **一句话启动**：`START.md`（写给 agent 的引导）+ 根目录 `AGENTS.md` / `CLAUDE.md`。把仓库链接丢给 agent 说"启动 cheat-on-x"，它自己装 skill、建工作区（默认 `~/x-posts`）、快速初始化
+- **托管模式**（根 `SKILL.md`）：意图表代替触发词表——贴草稿 → 存草稿 + 打分；"要发了" → 先押注锁定再放行，并自动定稿入队；"发了 + 链接" → 登记；"数据怎么样" → 自动找导出文件并复盘。每步结尾一行"下一步"，开场挑最要紧的一件事说
+- **工作区 `AGENTS.md` / `CLAUDE.md`**（`templates/project-agents.template.md`）：`cheatx-init` 写入，以后在工作区打开任何 agent 都自动进入托管模式
+- **`cheatx-init` 快速模式**（默认）：3 个问题；其余用默认值，记进 `state.deferred_setup`，到用得上时再问（历史 → 第一次押注前；数据路线 → 第一次发布后；对标 → 第一次复盘后）。原 8 问改为 `— mode: full`
+- **`import_csv.py find`**：在下载文件夹和 `imports/` 里找最近导出的 CSV，`--copy` 复制进 `imports/`，只输出元数据（保盲）
+- **git 留痕**：工作区自动 `git init`（仅本地）；每次押注 / 定稿 / 登记发布后只提交相关文件。没有 hook 的 agent 里，这是预测没被改过的证据
+- state 新字段（可选，schema 仍为 x1.0）：`cheatx_home`、`init_mode`、`deferred_setup`、`git_trail`
+- 开场报告：升级建议线（校准 ≥ 10 且距上次升级 ≥ 5 条）、推迟的设置项；末尾提示改为托管模式
+
+### Changed
+
+- `install.sh` / `uninstall.sh`：Claude Code 也注册入口 skill `cheat-on-x`（15 个 `/cheatx-*` 斜杠命令保留）；新增 `--yes`（不弹确认，非终端环境下不加 `--yes` 会明确退出而不是卡住）
+- `install.sh`：Windows Git Bash 上 `ln -s` 会悄悄复制整个目录（连 `.git`），却仍显示"symlink 模式"。现在先请求原生软链接，拿不到就明确改为复制并说明
+- `cheatx-predict`：接受对话里直接贴的正文；托管模式下快押用三四行人话展示；发布信息合成一句话问
+- `cheatx-queue`：`— final: same` 跳过"定稿和草稿一样吗"的提问
+- `cheatx-publish`：只说"发了"也能按内容找到对应预测；托管模式下第一次发布后提议装油猴脚本
+- `cheatx-retro` / `cheatx-learn-from`：不再让用户把 CSV 挪进 `imports/`，改用 `find --copy`
+- `cheatx-retro`：识别托管模式写入的 `Integrity Note`
+- README（中英）：开头换成"一句话开始"
+
+---
+
 ## [0.1.0] — 2026-11-12 — X edition
 
 ### Added

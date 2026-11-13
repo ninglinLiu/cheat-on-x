@@ -1,7 +1,7 @@
 ---
 name: cheatx-queue
 description: 登记一条帖子"定稿、排队待发"。建 posts/<id>/ 目录 + 写 final.md（实际要发的文本）+ 定稿与草稿差 ≥30% 时触发 v2 预测 + 队列 +1。与 cheatx-publish 配对：定稿入队，发布出队。替代上游 cheat-on-content 的 cheat-shoot（"拍了"）。触发词："定稿"/"定稿 X"/"排进队列"/"queued"/"这条写好了"。
-argument-hint: '<drafts-path-or-id> [— planned: <ISO>]'
+argument-hint: '<drafts-path-or-id> [— final: same] [— planned: <ISO>]'
 allowed-tools: Bash(*), Read, Write, Edit, Glob
 ---
 
@@ -42,7 +42,11 @@ cheatx-queue **不写预测内容**——只负责检测改稿、派发 v2、维
 
 ### Phase 2：建目录 + 确认定稿
 
-建 `posts/<同名>/`，问：
+建 `posts/<同名>/`。
+
+带 `— final: same`（托管模式下 `cheatx-predict` 押注后自动调用，用户刚说过"就这样发"）→ 不问，直接按 a 处理。
+
+否则问：
 
 ```
 「<短名>」要发的文本和 drafts/<…>.md 一样吗？
@@ -106,6 +110,10 @@ c) 基本是另一条了 → 走 _redo：drafts/<…>_redo.md 重新预测，原
 ```
 
 颜色变化时高亮（🟢→🔵："队列够发 N 天了，先发"）。
+
+托管模式下不打印上面的块，只说一句人话（"排好了，队列里还有 3 条，够发一天"），队列颜色没变就不提。
+
+`state.git_trail = true` → `git add -- posts/<同名>/final.md && git commit -m "queue: <短名>" -- posts/<同名>/final.md`（规则同 cheatx-predict Phase 6.5）。
 
 ## Key Rules
 

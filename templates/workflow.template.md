@@ -24,7 +24,7 @@
   ⚠️ 从这一刻起别再改这条的预测
   ↓
 48h 后 → 在 x.com 打开自己主页，用油猴脚本导出 CSV 到 imports/
-  → "复盘到期的 imports/<文件>.csv"（或单条 "复盘 predictions/..."）
+  → "复盘到期的"（agent 用 `import_csv.py find` 自己去下载文件夹找文件；或单条 "复盘 predictions/..."）
   → posts/<id>/report.md + 预测文件 ## 复盘 段 + rubric-memo.md 观察
   ↓
 连续同向偏差 / 校准池够了 → /cheatx-bump

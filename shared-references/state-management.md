@@ -10,6 +10,8 @@
 <x-content-project>/.cheatx-state.json
 ```
 
+下文代码里的 `os.getcwd()` 指**工作区**。通过 START.md 启动时工作区可能不是当前目录（例如建在 `~/x-posts`），那就换成工作区路径。
+
 **绝不**放到全局 `~/.claude/` 或 cheat-on-x 源码目录——一个用户可能有多个 X 账号 / 项目，每个项目独立状态。
 
 文件名带 `x`（不是上游的 `.cheat-state.json`），这样同一台机器可以同时装 cheat-on-content 和 cheat-on-x，互不串台。
@@ -21,8 +23,12 @@
 ```json
 {
   "schema_version": "x1.0",
-  "skill_version": "0.1.0",
+  "skill_version": "0.2.0",
   "edition": "x",
+  "cheatx_home": "/home/me/cheat-on-x",
+  "init_mode": "quick",
+  "deferred_setup": ["history", "data_route", "benchmark"],
+  "git_trail": true,
 
   "x_handle": "@yourhandle",
   "x_premium": "none",
@@ -89,6 +95,10 @@
 | `skill_version` | string | cheatx-init | cheat-on-x 版本 |
 | `edition` | `"x"` | cheatx-init | 固定值。防止误把上游 state 文件当成 X 版读 |
 | `initialized_at` | ISO 8601（本地时区，**不要 `Z`**） | cheatx-init | 永不变 |
+| `cheatx_home` | 绝对路径 / 缺省 | cheatx-init | 工具包位置。各 skill 找 `<cheat-on-x>` 时先读它（0.2.0 新增，旧 state 缺省时按根 SKILL.md「找到工具包」的顺序找） |
+| `init_mode` | `quick` / `full` | cheatx-init | 初始化走的模式 |
+| `deferred_setup` | 数组：`history` / `data_route` / `benchmark` / `language` | cheatx-init 创建；处理该项的流程删除对应项（history → cheatx-init Phase 3.5，data_route → 用户选定数据路线时，benchmark → cheatx-learn-from 或用户拒绝时，language → 用户回答时） | 快速初始化推迟的设置项。托管模式到用得上时再问，见根 SKILL.md「推迟的设置项」 |
+| `git_trail` | bool | cheatx-init | 工作区是不是 git 仓库。true → cheatx-predict / publish 每次落盘后自动提交，作为预测不可改的留痕 |
 
 ### 账号与形态
 

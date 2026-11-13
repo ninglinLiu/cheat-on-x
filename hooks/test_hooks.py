@@ -183,6 +183,27 @@ class TestSessionStart(unittest.TestCase):
             self.assertNotIn("跳过的候选ZZ", out)
             self.assertIn("🟡", out)
 
+    def test_bump_hint_and_deferred_setup(self):
+        import sys
+        sys.path.insert(0, str(HERE))
+        import session_start  # noqa: E402
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            proj = Path(d)
+            state = {"schema_version": "x1.0", "edition": "x", "calibration_samples": 12,
+                     "calibration_samples_at_last_bump": 5, "hooks_installed": True,
+                     "benchmark_status": "pending", "deferred_setup": ["history", "benchmark"]}
+            (proj / ".cheatx-state.json").write_text(json.dumps(state), encoding="utf-8")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                session_start.main(["x", str(proj)])
+            out = buf.getvalue()
+            self.assertIn("已有 7 条新复盘", out)
+            self.assertIn("推迟的设置：history / benchmark", out)
+            self.assertNotIn("还没导入对标账号", out)     # deferred → no nagging warning
+            self.assertIn("托管模式", out)
+
     def test_silent_outside_project(self):
         import sys
         sys.path.insert(0, str(HERE))

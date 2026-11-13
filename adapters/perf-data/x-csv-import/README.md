@@ -17,6 +17,11 @@
 ```bash
 IMP=<cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py
 
+# 找最近导出的文件：搜下载文件夹（Downloads / 下载）和 imports/，--copy 复制进 imports/（不移动原文件）
+# 只输出文件名、时间、帖子数、其中几条是你的（mine）——不输出任何指标
+python $IMP find --project . --copy
+python $IMP find --project . --dir D:/browser-downloads --days 3
+
 # 看一个文件怎么映射（不打印任何指标数值）
 python $IMP inspect imports/foo.csv
 
@@ -51,7 +56,8 @@ python $IMP --tz +08:00 history ...      # 导出里的时间没带时区时按�
 
 - `due` 只处理 `due_at` 已过的帖子；文件里其他帖子的数字不会出现在输出里
 - `history --project .` 跳过仍在 `pending_retros` 里的帖子
-- `text` / `inspect` 不输出任何指标
+- `find` / `text` / `inspect` 不输出任何指标
+- `find` 只碰 `cheatx-*.csv` 和能识别成帖子导出的 CSV，下载文件夹里其他 CSV 不读进输出、不复制
 - `report.md` 不写回复者 handle、不写导出文件的绝对路径
 
 ## report.md 格式

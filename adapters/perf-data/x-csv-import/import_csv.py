@@ -2,7 +2,8 @@
 """cheat-on-x CSV importer (stdlib only).
 
 Subcommands
-  inspect FILE...                         show how columns map (prints NO metric values)
+  find    [--project DIR] [--copy]        locate recent exports in Downloads / imports/ (metadata only)
+  inspect FILE...                       show how columns map (prints NO metric values)
   text    FILE... --id ID                 print only the posted text of one post (publish check; NO metrics)
   post    FILE... --id ID --out FOLDER    write FOLDER/report.md for one post
   due     FILE... --project DIR           write report.md for every pending retro that is due
@@ -178,6 +179,104 @@ def cmd_inspect(args) -> int:
     return 0
 
 
+def default_search_dirs(project: Path | None) -> list[Path]:
+    """Where browser downloads usually land, plus the project's own imports/."""
+    home = Path.home()
+    dirs = []
+    if project:
+        dirs.append(project / "imports")
+    for name in ("Downloads", "下载", "downloads"):
+        dirs.append(home / name)
+    for env in ("USERPROFILE", "XDG_DOWNLOAD_DIR"):
+        v = os.environ.get(env)
+        if v:
+            dirs.append(Path(v) / "Downloads" if env == "USERPROFILE" else Path(v))
+    seen, out = set(), []
+    for d in dirs:
+        try:
+            key = os.path.normcase(str(d.resolve()))
+        except OSError:
+            continue
+        if key not in seen and d.is_dir():
+            seen.add(key)
+            out.append(d)
+    return out
+
+
+def classify_file(path: Path, own_handle: str | None, args) -> dict | None:
+    """Metadata about one CSV — counts only, never metric values (blind-safe)."""
+    from aliases import map_columns
+    try:
+        headers, rows = read_table(path)
+    except (ValueError, OSError):
+        return None
+    kind = detect_kind(headers)
+    info = {"kind": kind, "rows": len(rows)}
+    if kind == "posts":
+        mapping, _ = map_columns(headers, parse_map(args.map))
+        if not ({"impressions", "likes"} & set(mapping.values())):
+            info["kind"] = "unknown"
+            return info
+        recs, _, _ = load_posts(path, parse_map(args.map), parse_tz(args.tz))
+        authors = {r.get("author") for r in recs if r.get("author")}
+        info["posts"] = len(recs)
+        info["authors"] = len(authors)
+        if own_handle:
+            info["mine"] = sum(1 for r in recs if r.get("author") == own_handle)
+    return info
+
+
+def cmd_find(args) -> int:
+    project = Path(args.project) if args.project else None
+    own = norm_handle(args.handle)
+    if not own and project and (project / ".cheatx-state.json").is_file():
+        try:
+            own = norm_handle(json.loads((project / ".cheatx-state.json").read_text(encoding="utf-8")).get("x_handle"))
+        except (OSError, ValueError):
+            own = None
+    dirs = [Path(d) for d in args.dir] if args.dir else default_search_dirs(project)
+    cutoff = datetime.now().timestamp() - args.days * 86400
+    found = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            if not f.is_file() or f.suffix.lower() != ".csv":
+                continue
+            st = f.stat()
+            if st.st_mtime < cutoff:
+                continue
+            ours = f.name.startswith("cheatx-")
+            info = classify_file(f, own, args)
+            if info is None or (info["kind"] == "unknown" and not ours):
+                continue   # unrelated CSV in Downloads — not ours to touch
+            item = {"path": str(f), "name": f.name, "dir": str(d),
+                    "modified": datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="minutes"),
+                    "size": st.st_size, "from_userscript": ours, **info}
+            found.append(item)
+    found.sort(key=lambda x: x["modified"], reverse=True)
+    if args.copy and project:
+        dest = project / "imports"
+        dest.mkdir(parents=True, exist_ok=True)
+        for item in found:
+            src = Path(item["path"])
+            if os.path.normcase(str(src.parent.resolve())) == os.path.normcase(str(dest.resolve())):
+                item["project_path"] = str(Path("imports") / src.name)
+                continue
+            target = dest / src.name
+            if target.exists() and target.stat().st_size == src.stat().st_size:
+                item["project_path"] = str(Path("imports") / src.name)
+                item["copied"] = False
+                continue
+            if target.exists():
+                target = dest / f"{src.stem}-{int(src.stat().st_mtime)}{src.suffix}"
+            target.write_bytes(src.read_bytes())   # copy, never move: the user's Downloads stay as they were
+            item["project_path"] = str(Path("imports") / target.name)
+            item["copied"] = True
+    emit({"searched": [str(d) for d in dirs], "days": args.days, "files": found})
+    return 0 if found else 2
+
+
 def cmd_text(args) -> int:
     pid = extract_status_id(args.id)
     merged = load_merged(args.files, args)
@@ -342,6 +441,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--tz", help="无时区时间的时区，如 +08:00（默认本机时区）")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    s = sub.add_parser("find", help="找最近导出的 CSV（下载文件夹 + imports/），只给元数据")
+    s.add_argument("--project", help="项目目录；会搜它的 imports/，并从 state 读你的 handle")
+    s.add_argument("--dir", action="append", help="只搜这些目录（可重复）；默认下载文件夹 + imports/")
+    s.add_argument("--days", type=float, default=14, help="只看最近 N 天修改的文件（默认 14）")
+    s.add_argument("--handle", help="你的 handle，用来数文件里有几条是你的帖子")
+    s.add_argument("--copy", action="store_true", help="把找到的文件复制进 <project>/imports/（不移动原文件）")
+
     s = sub.add_parser("inspect")
     s.add_argument("files", nargs="+")
 
@@ -383,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
     try:
-        return {"inspect": cmd_inspect, "text": cmd_text, "post": cmd_post, "due": cmd_due,
+        return {"find": cmd_find, "inspect": cmd_inspect, "text": cmd_text, "post": cmd_post, "due": cmd_due,
                 "history": cmd_history, "trends": cmd_trends}[args.cmd](args)
     except ValueError as e:
         print(f"❌ {e}", file=sys.stderr)

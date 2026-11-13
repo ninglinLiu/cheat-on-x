@@ -127,7 +127,7 @@ def main(argv) -> int:
     if due:
         lines.append(f"⏰ 到期待复盘 {due} 条（最早 {earliest:%m-%d %H:%M}）"
                      + (f"，24 小时内还有 {soon} 条" if soon else "")
-                     + " → x.com 导出 CSV 后说 \"复盘到期的 imports/<文件>.csv\"")
+                     + " → 建议用户在 x.com 用油猴脚本导出，导出后跑 import_csv.py find --copy 自动找文件")
     else:
         lines.append(f"⏰ 到期待复盘：无" + (f"（24 小时内 {soon} 条到期）" if soon else ""))
 
@@ -166,6 +166,12 @@ def main(argv) -> int:
     # calibration
     n = int(st.get("calibration_samples", 0) or 0)
     lines.append(f"📈 rubric {st.get('rubric_version', 'v0')} · 校准样本 {n} · confidence {confidence(n)}")
+    new_since_bump = n - int(st.get("calibration_samples_at_last_bump", 0) or 0)
+    if n >= 10 and new_since_bump >= 5:
+        lines.append(f"🔧 距上次升级评分规则已有 {new_since_bump} 条新复盘——可以提议用户看看规则要不要调（/cheatx-bump）")
+    deferred = [d for d in st.get("deferred_setup", []) if isinstance(d, str)]
+    if deferred:
+        lines.append("⏳ 推迟的设置：" + " / ".join(deferred) + "（到用得上时再问，见 SKILL.md「推迟的设置项」）")
 
     # warnings
     if st.get("edition") != "x":
@@ -184,7 +190,7 @@ def main(argv) -> int:
             warns.append(f"⚠️ 有一个中断的 {ips.get('type', '流程')}（{started:%m-%d %H:%M} 开始）——继续还是清掉？")
     if not st.get("hooks_installed"):
         warns.append("⚠️ 预测锁 hook 没装——盲预测保护是君子协定")
-    if st.get("benchmark_status") == "pending":
+    if st.get("benchmark_status") == "pending" and "benchmark" not in deferred:
         warns.append("🎯 还没导入对标账号——/cheatx-learn-from")
 
     print("")
@@ -193,7 +199,8 @@ def main(argv) -> int:
         print(line)
     for w in warns[:4]:
         print(w)
-    print("（不要主动开始任何动作——等用户决定。说 \"X 状态\" 看完整看板。）")
+    print("（这是 cheat-on-x 工作区，按 SKILL.md「托管模式」工作：用一两句人话告诉用户上面最要紧的一件事并给建议，"
+          "用户同意再动手。用户不需要记命令或路径。）")
     print("")
     return 0
 

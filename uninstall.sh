@@ -31,7 +31,7 @@ SUB_SKILLS=(
   cheatx-migrate
 )
 
-CLAUDE_SKILLS=("${SUB_SKILLS[@]}")
+CLAUDE_SKILLS=(cheat-on-x "${SUB_SKILLS[@]}")
 CODEX_SKILLS=(cheat-on-x "${SUB_SKILLS[@]}")
 
 TARGET_AGENT="claude"

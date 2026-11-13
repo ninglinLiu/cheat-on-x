@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-<a href="../CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.1.0-orange" alt="Version"></a>
+<a href="../CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.2.0-orange" alt="Version"></a>
 &nbsp;
 <a href="../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
 &nbsp;
@@ -22,6 +22,28 @@
 <a href="https://github.com/XBuilderLAB/cheat-on-content">cheat-on-content</a> 的 X（推特）版：<br>
 你在 X 上发的每一条，都是一个在数字出来<b>之前</b>就写下来的赌注。
 </p>
+
+---
+
+## ⚡ 一句话开始
+
+把这个仓库的链接发给任何一个能操作文件、能跑命令的 agent（Claude Code、Codex、Cursor、Gemini CLI……），说：
+
+```
+启动 cheat-on-x
+```
+
+agent 会按 [START.md](../START.md) 自己装好 skill、给你建一个发帖工作区（默认 `~/x-posts`），问你 3 个问题。之后你只管正常说话：
+
+| 你说 | agent 做 |
+|---|---|
+| （贴一段草稿）"帮我看看" | 存起来、打分，指出最该改的一两处 |
+| "行，我去发了" | 先押注并锁定，**然后**才让你发 |
+| "发了 https://x.com/你/status/…" | 登记发布，告诉你哪天可以对答案 |
+| "那条怎么样了" | 自己去下载文件夹找你刚导出的 CSV，只复盘已经到期的帖子 |
+| "今天发啥" | 从选题池推荐，或者直接帮你起草 |
+
+不用记任何命令或文件路径。工作区里会写一份 `AGENTS.md` / `CLAUDE.md`，以后在那里打开 agent 会自动接上。15 个 `/cheatx-*` 斜杠命令照样保留，喜欢敲命令的可以继续用。
 
 ---
 
@@ -80,39 +102,28 @@ v0 composite = (HK + RP + SV + RS + DW + FT + NF) / 7 × 2 − NR × 0.4
 
 ---
 
-## 📦 安装
+## 📦 手动安装
+
+不想让 agent 照 [START.md](../START.md) 操作、想自己装的话：
 
 ```bash
-git clone <本仓库地址> cheat-on-x
-cd cheat-on-x
-bash install.sh            # Claude Code（--codex 装到 Codex，--all 两个都装）
+git clone <本仓库地址> ~/cheat-on-x
+cd ~/cheat-on-x
+bash install.sh            # Claude Code（--codex 装到 Codex，--all 两个都装；--yes 不弹确认）
 ```
 
-15 个 `cheatx-*` skill 会链接进 agent 的 skill 目录，可以和上游的 `cheat-*` 并存。
+会把入口 skill `cheat-on-x` 和 15 个 `/cheatx-*` 斜杠命令链接进 agent 的 skill 目录，可以和上游的 `cheat-*` 并存。装完开一个新会话，说"启动 cheat-on-x"。
 
-**数据导出（推荐）**：在篡改猴 / 暴力猴里装 [`userscripts/cheatx-exporter.user.js`](../userscripts/README.md)。你浏览 x.com 时，它读页面已经加载的数据，点一下就导出 CSV；不发额外请求，不上传任何东西。
+想走原来的 8 问完整初始化（handle 与 Premium、常发形态、语言、每天几条、历史、数据路线、选题池、hooks）：`/cheatx-init — mode: full`。
 
----
+**数据导出（推荐）**：在篡改猴 / 暴力猴里装 [`userscripts/cheatx-exporter.user.js`](../userscripts/README.md)。你浏览 x.com 时，它读页面已经加载的数据，点一下就导出 CSV；不发额外请求，不上传任何东西。导出的文件 agent 会自己去下载文件夹找。
 
-## 🚀 第一次用
-
-为你的 X 账号建一个空文件夹，在里面打开 Claude Code，说：
+## ⌨️ 斜杠命令（可选）
 
 ```
-初始化 cheat-on-x
-```
-
-它会问 8 个问题（handle 与 Premium、常发形态、语言、每天几条、历史、数据路线、选题池、hooks），可以导入你最近的帖子算出各形态基线，再导入一个对标账号。
-
-## ⚡ 日常
-
-```
-找选题 / "帮我写一条关于 X 的"           → drafts/…
-快押 drafts/… ｜ 启动预测 … ｜ 批量预测 drafts/
-定稿 drafts/…                           → 进队列
-已发 https://x.com/你/status/…           → 登记发布、排好复盘时间
-复盘到期的 imports/cheatx-mine-….csv     → 一次复盘所有到期的帖子
-X 状态 · 推荐今天发什么 · 抓 X 热点 · 升级 rubric · 导入对标账号 @someone
+/cheatx-score · /cheatx-predict（快押 / 完整 / 批量）· /cheatx-queue · /cheatx-publish
+/cheatx-retro · /cheatx-status · /cheatx-recommend · /cheatx-seed · /cheatx-trends
+/cheatx-learn-from · /cheatx-persona · /cheatx-bump · /cheatx-init · /cheatx-migrate
 ```
 
 ---
@@ -123,6 +134,8 @@ X 状态 · 推荐今天发什么 · 抓 X 热点 · 升级 rubric · 导入对�
 - 油猴脚本依赖 X 的 GraphQL 响应结构。目前只在合成数据上测过，正式依赖之前先在自己账号上试一次。
 - X Analytics 导出的列名来自常见格式，没有用 2026 年的真实导出验证过。对不上就 `import_csv.py inspect`，再加 `--map`。
 - `xapi.py` 里的 API 单价来自第三方汇总，以 docs.x.com 为准。
+- 托管模式是写给 agent 的规则，不是代码。"正常说话就行"的效果取决于 agent 有没有照 `SKILL.md` 做；需要能读写文件的 agent，网页聊天框只能做打分。
+- 预测锁只在 Claude Code 里强制（hook）。其他 agent 靠规则加上每次押注后自动 git 提交——事后改了，`git diff` 能看出来。
 
 ## 🧪 测试
 

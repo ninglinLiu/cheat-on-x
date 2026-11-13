@@ -54,6 +54,7 @@ Phase 8 重算基线 + 偏差累计 + 是否提议 bump + state
    - 不够 → "还差 N 小时。坚持现在复盘会标 `early_retro: true`，bump 时权重减半"
 5. 已有复盘内容 → 问"补充还是修正？"（补充：追加带日期的子段；修正预测段：拒绝）
 6. header 有 `Reconstructed retrospective` → 可以复盘，但**不计入** calibration_samples
+7. header 有 `Integrity Note`（托管模式下用户在窗口前说出过数据）→ 照常复盘、照常计入，复盘段第一行写明这条 note；bump 时这条按 Integrity warning 降权
 
 ### Phase 1：取数
 
@@ -61,14 +62,26 @@ Phase 8 重算基线 + 偏差累计 + 是否提议 bump + state
 
 #### Route A：CSV（默认）
 
-用户在 x.com 用油猴脚本导出（或 X Analytics 导出）放进 `imports/`。还没导出就先给步骤：
+**先自己找文件，不要让用户挪文件或报路径：**
+
+```bash
+python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py find --project . --copy
+```
+
+它搜下载文件夹和 `imports/` 里最近 14 天的导出（`cheatx-*.csv` 或能识别的帖子 CSV），**复制**进 `imports/`（不移动原文件），只输出元数据：文件名、修改时间、帖子数、其中几条是你的（`mine`）。不输出任何数字指标，可以放心在复盘窗口前跑。
+
+- 找到了且 `mine > 0` → 用最新的一个（或几个）文件进下面的 `due`
+- 找到了但 `mine = 0` → 可能是对标账号的导出；问一句"这是别人的帖子吧？要导入成对标吗？"
+- 没找到 → 给用户导出步骤（没装油猴脚本就先给安装三步，见 `<cheat-on-x>/userscripts/README.md`）：
 
 ```
 1. 在 x.com 打开你的主页，往下滚过要复盘的这几条
 2. 想要回复：点进每条帖子，把回复区滚一遍（每条至少要 10 条回复才有分析价值）
 3. 可选：帖子 → 查看帖子分析 → 面板"读取本页分析数据（实验）"——补主页访问 / 新增关注
-4. 面板点"导出：我的帖子 + 回复/引用"，文件放进 imports/
+4. 面板点"导出：我的帖子 + 回复/引用"。下载完说一声"好了"，我自己去找文件
 ```
+
+用户说"好了"→ 再跑一次 `find --copy`。浏览器存到了别的目录 → 问一次目录，用 `--dir <目录>`。
 
 批量：
 
@@ -89,7 +102,7 @@ python <cheat-on-x>/adapters/perf-data/x-csv-import/import_csv.py post imports/<
 - `early_snapshot: true` → 快照早于窗口，复盘段注明
 - 导入器只打印**到期**帖子的数字——不要自己打开 CSV 去读其他行
 
-`<cheat-on-x>` 是源码克隆位置：`readlink -f ~/.claude/skills/cheatx-retro` 往上两级；找不到就问用户。
+`<cheat-on-x>` 是工具包位置，查找顺序见根 SKILL.md「找到工具包」（先看 state 的 `cheatx_home`）。
 
 #### Route B：X API（可选）
 

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.1.0-orange" alt="Version"></a>
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.2.0-orange" alt="Version"></a>
 &nbsp;
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
 &nbsp;
@@ -22,6 +22,28 @@
 The X (Twitter) edition of <a href="https://github.com/XBuilderLAB/cheat-on-content">cheat-on-content</a>:<br>
 every post you ship becomes a bet you wrote down <em>before</em> the numbers showed up.
 </p>
+
+---
+
+## ⚡ Start in one sentence
+
+Give this repo's link to any agent that can work with files and run commands (Claude Code, Codex, Cursor, Gemini CLI…) and say:
+
+```
+启动 cheat-on-x        (or: start cheat-on-x)
+```
+
+The agent follows [START.md](START.md). It installs the skills, creates a workspace for your posts (default `~/x-posts`), and asks you three questions. After that you just talk:
+
+| You say | The agent does |
+|---|---|
+| *(pastes a draft)* "how's this?" | saves it, scores it, points at the one or two things to fix |
+| "ok, posting now" | writes a blind bet and locks it, **then** tells you to post |
+| "posted https://x.com/you/status/…" | registers it and tells you when the 48h retro is due |
+| "how did it do?" | finds the CSV you just exported in Downloads and retros only the posts that are due |
+| "what should I post today?" | recommends from your topic pool, or drafts something |
+
+You never have to remember a command or a file path. The workspace gets an `AGENTS.md` / `CLAUDE.md`, so the next time you open an agent there it picks up where you left off. The 15 `/cheatx-*` slash commands are still there if you prefer them.
 
 ---
 
@@ -80,39 +102,28 @@ v0 composite = (HK + RP + SV + RS + DW + FT + NF) / 7 × 2 − NR × 0.4
 
 ---
 
-## 📦 Install
+## 📦 Manual install
+
+If you'd rather do it yourself than have an agent follow [START.md](START.md):
 
 ```bash
-git clone <this-repo-url> cheat-on-x
-cd cheat-on-x
-bash install.sh            # Claude Code   (--codex for Codex, --all for both)
+git clone <this-repo-url> ~/cheat-on-x
+cd ~/cheat-on-x
+bash install.sh            # Claude Code   (--codex for Codex, --all for both; --yes never prompts)
 ```
 
-Fifteen `cheatx-*` skills get linked into your agent's skill directory. They can sit next to upstream `cheat-*` skills without clashing.
+This links the `cheat-on-x` entry skill plus fifteen `/cheatx-*` slash commands into your agent's skill directory. They can sit next to upstream `cheat-*` skills without clashing. Then open a new agent session and say `启动 cheat-on-x`.
 
-**Data export (recommended):** install [`userscripts/cheatx-exporter.user.js`](userscripts/README.md) in Tampermonkey or Violentmonkey. While you browse x.com it reads the data the page already loaded, and one click exports a CSV. It sends no extra requests and uploads nothing.
+`/cheatx-init — mode: full` runs the original eight-question onboarding (handle and Premium, forms, language, posts per day, history, data route, topic pool, hooks) instead of the three-question quick start.
 
----
+**Data export (recommended):** install [`userscripts/cheatx-exporter.user.js`](userscripts/README.md) in Tampermonkey or Violentmonkey. While you browse x.com it reads the data the page already loaded, and one click exports a CSV. It sends no extra requests and uploads nothing. The agent finds the file in your Downloads folder on its own.
 
-## 🚀 First run
-
-In an empty folder for your X account, open Claude Code and say:
+## ⌨️ Slash commands (optional)
 
 ```
-初始化 cheat-on-x        (or: init cheat-on-x)
-```
-
-It asks eight questions: handle and Premium, the forms you post, language, posts per day, history, data route, topic pool, and hooks. It can then import your recent posts to set per-form baselines and pull in a benchmark account.
-
-## ⚡ Daily use
-
-```
-找选题 / "help me write one about X"     → drafts/…
-快押 drafts/…  |  启动预测 …  |  批量预测 drafts/
-定稿 drafts/…                            → queue
-已发 https://x.com/you/status/…          → registers the post, schedules the retro
-复盘到期的 imports/cheatx-mine-….csv      → batch retro of everything due
-X 状态 · 推荐今天发什么 · 抓 X 热点 · 升级 rubric · 导入对标账号 @someone
+/cheatx-score · /cheatx-predict (quick / full / batch) · /cheatx-queue · /cheatx-publish
+/cheatx-retro · /cheatx-status · /cheatx-recommend · /cheatx-seed · /cheatx-trends
+/cheatx-learn-from · /cheatx-persona · /cheatx-bump · /cheatx-init · /cheatx-migrate
 ```
 
 ---
@@ -123,6 +134,8 @@ X 状态 · 推荐今天发什么 · 抓 X 热点 · 升级 rubric · 导入对�
 - The userscript relies on the shape of X's GraphQL responses. It's tested on synthetic fixtures; try it once on your own account before relying on it.
 - X Analytics CSV column names come from common export formats, not from a verified 2026 export. If yours don't map, run `import_csv.py inspect` and add `--map`.
 - X API prices in `xapi.py` come from third-party summaries. Check docs.x.com.
+- Managed mode is instructions, not code. How well "just talk to it" works depends on the agent following `SKILL.md`. It needs an agent that can read and write files; a plain web chat can only score drafts.
+- The prediction lock is enforced only in Claude Code (a hook). Other agents rely on the rules plus a git commit after every bet, so later edits show up in `git diff`.
 
 ## 🧪 Tests
 

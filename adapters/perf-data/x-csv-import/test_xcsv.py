@@ -296,6 +296,39 @@ class TestCLI(FixtureMixin, unittest.TestCase):
         self.assertEqual(json.loads(stdout)["metrics"]["likes"], 30)
         self.assertEqual(json.loads(stdout)["metrics"]["impressions"], 1200)
 
+    def test_find_downloads_and_copy(self):
+        proj = self.make_project()
+        dl = self.dir / "Downloads"
+        dl.mkdir()
+        write_csv(dl / "cheatx-mine-20261112.csv", USERSCRIPT_HEADER,
+                  self.userscript_rows("2026-11-12T13:30:00Z", 2130))
+        write_csv(dl / "bank-statement.csv", ["date", "amount"], [{"date": "2026-11-01", "amount": "9"}])
+        old = write_csv(dl / "cheatx-mine-old.csv", USERSCRIPT_HEADER,
+                        self.userscript_rows("2026-01-01T00:00:00Z", 1))
+        os.utime(old, (0, 0))   # 1970 → outside --days
+        code, stdout, _ = run_cli(["find", "--project", str(proj), "--dir", str(dl), "--copy"])
+        self.assertEqual(code, 0)
+        res = json.loads(stdout)
+        names = [f["name"] for f in res["files"]]
+        self.assertEqual(names, ["cheatx-mine-20261112.csv"])        # unrelated + stale files ignored
+        item = res["files"][0]
+        self.assertEqual(item["kind"], "posts")
+        self.assertEqual(item["mine"], 3)                              # handle read from state
+        self.assertTrue(item["copied"])
+        self.assertTrue((proj / "imports" / "cheatx-mine-20261112.csv").is_file())
+        self.assertTrue((dl / "cheatx-mine-20261112.csv").is_file())     # copied, not moved
+        self.assertNotIn("2130", stdout)                                 # blind-safe: no metric values
+        self.assertNotIn("999999", stdout)
+        code, stdout, _ = run_cli(["find", "--project", str(proj), "--dir", str(dl), "--copy"])
+        self.assertFalse(json.loads(stdout)["files"][0]["copied"])      # second run: already there
+
+    def test_find_nothing(self):
+        empty = self.dir / "empty"
+        empty.mkdir()
+        code, stdout, _ = run_cli(["find", "--dir", str(empty)])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(stdout)["files"], [])
+
     def test_trends(self):
         p = write_csv(self.dir / "t.csv", ["name", "meta", "domain", "captured_at"],
                       [{"name": "OpenModel", "meta": "12.3K posts", "domain": "Technology",

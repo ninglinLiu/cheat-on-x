@@ -2,12 +2,13 @@
 #
 # cheat-on-x / install.sh
 #
-# Symlinks the 15 cheatx-* sub-skills into Claude Code and/or Codex skill directories.
+# Symlinks the cheat-on-x entry skill + the 15 cheatx-* sub-skills (slash commands) into
+# Claude Code and/or Codex skill directories.
 # Skill names are prefixed `cheatx-` so cheat-on-x can be installed side by side with
 # upstream cheat-on-content (`cheat-*`) without collisions.
 #
-# After install, in any X content project directory: open Claude Code → say
-# "初始化 cheat-on-x" → /cheatx-init runs the onboarding.
+# After install: open your agent and say "启动 cheat-on-x" (or "start cheat-on-x").
+# Agents can also do all of this themselves — see START.md.
 #
 # To uninstall: bash uninstall.sh
 #
@@ -17,6 +18,7 @@
 #   bash install.sh --codex            # Codex install into ~/.codex/skills/
 #   bash install.sh --all              # install for Claude Code and Codex
 #   bash install.sh --codex --copy     # Codex install, copy mode
+#   bash install.sh --yes              # never prompt (overwrite existing links); for agents / CI
 #   bash install.sh --reinstall-hooks <project-dir>
 #                                      # rewrite hook scripts in an existing project's .cheatx-hooks/
 #                                      # (use after git pull when CHANGELOG mentions hook changes;
@@ -49,13 +51,15 @@ HOOK_FILES=(
   log-event.sh
 )
 
-CLAUDE_SKILLS=("${SUB_SKILLS[@]}")
+CLAUDE_SKILLS=(cheat-on-x "${SUB_SKILLS[@]}")
 CODEX_SKILLS=(cheat-on-x "${SUB_SKILLS[@]}")
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 MODE="symlink"
 TARGET_AGENT="claude"
+ASSUME_YES=0
+FELL_BACK_TO_COPY=0
 
 # --- --reinstall-hooks branch: rewrite a user project's hook scripts only ---
 if [[ "${1:-}" == "--reinstall-hooks" ]]; then
@@ -108,13 +112,14 @@ for arg in "$@"; do
     --claude) TARGET_AGENT="claude" ;;
     --codex)  TARGET_AGENT="codex" ;;
     --all)    TARGET_AGENT="all" ;;
+    --yes|-y) ASSUME_YES=1 ;;
     --help|-h)
       sed -n '1,25p' "$0"
       exit 0
       ;;
     *)
       echo "❌ Unknown argument: $arg"
-      echo "   Usage: bash install.sh [--copy] [--claude|--codex|--all]"
+      echo "   Usage: bash install.sh [--copy] [--claude|--codex|--all] [--yes]"
       exit 1
       ;;
   esac
@@ -184,8 +189,19 @@ install_skills() {
       rm -rf "$dst"
     fi
     if [[ "$MODE" == "symlink" ]]; then
-      ln -s "$src" "$dst"
-      echo "  ✓ symlinked: $s"
+      # Git Bash on Windows silently deep-copies on `ln -s` unless native symlinks are allowed
+      # (Developer Mode / admin). Ask for a native link; if we did not get one, copy explicitly.
+      if MSYS=winsymlinks:nativestrict ln -s "$src" "$dst" 2>/dev/null && [[ -L "$dst" ]]; then
+        echo "  ✓ symlinked: $s"
+      else
+        rm -rf "$dst"
+        cp -R "$src" "$dst"
+        if [[ "$s" == "cheat-on-x" ]]; then
+          rm -rf "$dst/.git"
+        fi
+        FELL_BACK_TO_COPY=1
+        echo "  ✓ copied:    $s (symlinks not available here)"
+      fi
     else
       cp -R "$src" "$dst"
       if [[ "$s" == "cheat-on-x" ]]; then
@@ -204,7 +220,13 @@ if [[ "$TARGET_AGENT" == "codex" || "$TARGET_AGENT" == "all" ]]; then
   detect_conflicts "$HOME/.codex/skills" "${CODEX_SKILLS[@]}" || WARNED=1
 fi
 
-if [[ $WARNED -eq 1 ]]; then
+if [[ $WARNED -eq 1 && $ASSUME_YES -eq 1 ]]; then
+  echo "(--yes: overwriting)"
+elif [[ $WARNED -eq 1 && ! -t 0 ]]; then
+  echo ""
+  echo "Not a terminal, so I cannot ask. Re-run with --yes to overwrite."
+  exit 1
+elif [[ $WARNED -eq 1 ]]; then
   echo ""
   read -p "Continue and overwrite? (y/N) " -n 1 -r
   echo ""
@@ -225,10 +247,10 @@ echo ""
 echo "✅ Install complete!"
 echo ""
 echo "Next steps:"
-echo "  1. cd into your X content project (or create one):"
-echo "       mkdir ~/my-x && cd ~/my-x"
-echo "  2. Open Claude Code or Codex in that directory"
-echo "  3. Say:  初始化 cheat-on-x   (or: init cheat-on-x)"
+echo "  1. Open Claude Code or Codex (a new session, so the skills load)"
+echo "  2. Say:  启动 cheat-on-x   (or: start cheat-on-x)"
+echo "     It sets up a workspace (default ~/x-posts), asks 3 questions, and from then on"
+echo "     you just talk: paste drafts, say \"posting now\", paste the link, ask \"how did it do\"."
 echo ""
 echo "  Data export (default, free): install userscripts/cheatx-exporter.user.js"
 echo "  in Tampermonkey / Violentmonkey — see userscripts/README.md"
@@ -241,7 +263,10 @@ if [[ "$TARGET_AGENT" == "codex" || "$TARGET_AGENT" == "all" ]]; then
   echo "Note: restart Codex if the new skills do not appear in the current session."
 fi
 echo ""
-if [[ "$MODE" == "symlink" ]]; then
+if [[ "$MODE" == "symlink" && $FELL_BACK_TO_COPY -eq 1 ]]; then
+  echo "ℹ️  Mode: copy (this system could not create symlinks — e.g. Windows without Developer Mode)."
+  echo "   Re-run install.sh after updating the source to refresh the installed copy."
+elif [[ "$MODE" == "symlink" ]]; then
   echo "ℹ️  Mode: symlink — edits to source SKILL.md files take effect immediately."
 else
   echo "ℹ️  Mode: copy — frozen at install time. Re-run install.sh to update."

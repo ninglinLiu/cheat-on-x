@@ -110,7 +110,7 @@ X 排序对同一作者在同一个人时间线里的连续出现做衰减。具
 ```
 SessionStart：⏰ 3 条到期
 → 用户在 x.com 打开自己主页，油猴脚本导出 CSV（或 x-api）
-→ "复盘到期的 imports/x-posts-xxxx.csv" → cheatx-retro 批量
+→ "复盘到期的"（`find --copy` 自动找导出文件）→ cheatx-retro 批量
 → 每条写复盘段 → 检查 bump 条件
 ```
 

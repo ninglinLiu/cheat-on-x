@@ -32,6 +32,8 @@ Phase 5 提醒 + 下一步
 
 ### Phase 0：找预测文件
 
+托管模式下用户只说"发了"（没给链接、没指明哪条）也要能接住：按下面的优先级自己找，**用内容跟用户确认**（"是'删掉的 7 个提示词'那条吧？"），不让用户报文件名。没给链接 → 顺口要一下："把链接贴我一下，48 小时后要靠它取数据。"
+
 优先级：
 1. 参数给了预测文件路径
 2. 链接对应的 status id 已出现在某个预测 header 里 → 已登记过，问是否覆盖
@@ -92,7 +94,7 @@ python <cheat-on-x>/tools/posted_text_check.py posts/<同名>/final.md --text "<
 ```
 
 - 已有 `Published at` → 问"覆盖吗？"，不静默覆盖
-- `posts/<同名>/` 不存在（跳过了定稿）→ 提醒"下次先 `定稿`"，自动建目录、把草稿复制成 `final.md`，header 加 `**Ad Hoc Publish**: true`
+- `posts/<同名>/` 不存在（跳过了定稿）→ 自动建目录、把草稿复制成 `final.md`，header 加 `**Ad Hoc Publish**: true`。托管模式下不提醒用户（定稿是你的事）；斜杠命令模式下提醒"下次先 `定稿`"
 - hook 误拦 header 编辑 → 报告问题，**不要绕过 hook**
 
 ### Phase 4：state
@@ -124,8 +126,21 @@ python <cheat-on-x>/tools/posted_text_check.py posts/<同名>/final.md --text "<
 
 📅 复盘到期：11-14 21:03（T+48h）
    到时在 x.com 打开主页、点开这条滚一遍回复，用油猴脚本"导出：我的帖子 + 回复/引用"，
-   然后说"复盘到期的 imports/<文件>.csv"
+   然后说"复盘到期的"（文件我会自己去下载文件夹找）
 ```
+
+**托管模式**下换成人话，三四行：
+
+```
+记下了，21:03 发的。11-14 晚上 9 点后可以对答案——到时候你打开 agent 我会提醒你。
+这两天它的浏览数先别告诉我。
+```
+
+再加一条（每个会话最多一次）：
+- `deferred_setup` 含 `data_route` → "48 小时后要拿数据。现在花 1 分钟装个浏览器脚本？装好以后导出数据只要点一下。（也可以用付费的 X API，或者到时候手动抄数字）"。用户选了就按 `cheatx-init` Q6 的映射写 state、给安装步骤（`<cheat-on-x>/userscripts/README.md`），并从 `deferred_setup` 删掉 `data_route`
+- 文本一致性 `diff ≥ 30%` 的提醒照常说
+
+`state.git_trail = true` → header 改完后 `git commit -m "publish: <短名>" -- predictions/<同名>.md posts/<同名>/final.md`（规则同 cheatx-predict Phase 6.5）。
 
 ## Key Rules
 
